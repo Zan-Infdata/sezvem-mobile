@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 
+import 'styles/companion_look.dart';
+
 /// Position of the overlay window and the usable screen area, in physical
 /// pixels. The usable area excludes system bars and display cutouts.
 class CompanionWindowLayout {
@@ -53,18 +55,20 @@ class CompanionWindow {
     return CompanionWindowLayout.fromMap(map ?? const {});
   }
 
-  /// The ID of the style chosen in settings, or null if none was chosen.
-  Future<String?> getStyleId() => _channel.invokeMethod<String>('getStyle');
+  /// The companion look chosen in settings.
+  Future<CompanionLook> getLook() async => CompanionLook.fromMap(
+    await _channel.invokeMapMethod<Object?, Object?>('getLook'),
+  );
 
   /// Handles calls from the service. [onLayoutChanged] receives the clamped
   /// layout after rotation or a display change. [onMoveTo] receives a point in
   /// 0 to 1 screen coordinates from the main app and returns whether the
-  /// companion accepted the move. [onStyleChanged] receives a newly chosen
-  /// style ID.
+  /// companion accepted the move. [onLookChanged] receives a newly chosen
+  /// look.
   void listen({
     required void Function(CompanionWindowLayout layout) onLayoutChanged,
     required bool Function(Offset uv) onMoveTo,
-    required void Function(String styleId) onStyleChanged,
+    required void Function(CompanionLook look) onLookChanged,
   }) {
     _channel.setMethodCallHandler((call) async {
       final args = call.arguments is Map ? call.arguments as Map : const {};
@@ -77,9 +81,8 @@ class CompanionWindow {
           final v = (args['v'] as num?)?.toDouble();
           if (u == null || v == null) return false;
           return onMoveTo(Offset(u, v));
-        case 'styleChanged':
-          final id = call.arguments;
-          if (id is String) onStyleChanged(id);
+        case 'lookChanged':
+          onLookChanged(CompanionLook.fromMap(args));
           return null;
       }
       throw MissingPluginException(call.method);

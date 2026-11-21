@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 
+import 'styles/companion_look.dart';
+
 /// Main-app access to the companion overlay.
 ///
 /// The rest of the app depends on this interface, not on the Android window
@@ -25,11 +27,11 @@ abstract interface class CompanionOverlay {
   /// the companion isn't showing or is busy with another action.
   Future<bool> moveTo(Offset uv);
 
-  /// The ID of the companion style chosen in settings, or null if none was.
-  Future<String?> styleId();
+  /// The companion look chosen in settings.
+  Future<CompanionLook> look();
 
-  /// Saves the companion style. A visible companion switches right away.
-  Future<void> setStyleId(String id);
+  /// Saves the companion look. A visible companion switches right away.
+  Future<void> setLook(CompanionLook look);
 
   /// Sends the app to the background without closing it.
   Future<void> minimizeApp();
@@ -64,11 +66,13 @@ class AndroidCompanionOverlay implements CompanionOverlay {
       false;
 
   @override
-  Future<String?> styleId() => _channel.invokeMethod<String>('getStyle');
+  Future<CompanionLook> look() async => CompanionLook.fromMap(
+    await _channel.invokeMapMethod<Object?, Object?>('getLook'),
+  );
 
   @override
-  Future<void> setStyleId(String id) =>
-      _channel.invokeMethod<void>('setStyle', id);
+  Future<void> setLook(CompanionLook look) =>
+      _channel.invokeMethod<void>('setLook', look.toMap());
 
   @override
   Future<void> minimizeApp() => _channel.invokeMethod<void>('minimizeApp');

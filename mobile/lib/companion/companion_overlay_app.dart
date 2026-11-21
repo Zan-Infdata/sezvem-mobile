@@ -49,7 +49,7 @@ class CompanionOverlayApp extends StatefulWidget {
   /// Defaults to [testCompanionActions].
   final Map<CompanionInput, CompanionAction>? actions;
 
-  /// The styles a saved style ID can pick from.
+  /// The styles a saved look can pick from.
   final List<CompanionStyle> styles;
 
   @override
@@ -74,9 +74,9 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
 
   Future<void> _start() async {
     final layout = await _window.getLayout();
-    final styleId = await _window.getStyleId();
+    final look = await _window.getLook();
     if (!mounted) return;
-    setState(() => _style = companionStyleById(styleId, widget.styles));
+    setState(() => _style = look.resolve(widget.styles));
     final movement = _movement = CompanionMovementController(
       window: _window,
       layout: layout,
@@ -92,9 +92,9 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
       onLayoutChanged: movement.updateLayout,
       // Moves from the main app follow the same one-at-a-time rule as inputs.
       onMoveTo: (uv) => actions.run((context) => walkToUv(context, uv)),
-      onStyleChanged: (id) {
+      onLookChanged: (look) {
         if (!mounted) return;
-        setState(() => _style = companionStyleById(id, widget.styles));
+        setState(() => _style = look.resolve(widget.styles));
       },
     );
     actions.run(enterFromRight);

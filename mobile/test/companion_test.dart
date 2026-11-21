@@ -14,7 +14,10 @@ import 'package:ixland_mobile/companion/companion_state.dart';
 import 'package:ixland_mobile/companion/companion_wander_test.dart';
 import 'package:ixland_mobile/companion/companion_window.dart';
 import 'package:ixland_mobile/companion/styles/classic_style.dart';
+import 'package:ixland_mobile/companion/styles/companion_look.dart';
 import 'package:ixland_mobile/companion/styles/companion_style.dart';
+import 'package:ixland_mobile/companion/styles/dress_up/dress_up_parts.dart';
+import 'package:ixland_mobile/companion/styles/dress_up/dress_up_style.dart';
 import 'package:ixland_mobile/devices/connected_devices_screen.dart';
 import 'package:ixland_mobile/settings/patient_settings.dart';
 import 'package:ixland_mobile/settings/settings_screen.dart';
@@ -263,9 +266,77 @@ void main() {
 
       await tester.tap(find.text('Dot'));
       await pumpFor(tester, const Duration(milliseconds: 100));
-      expect(companion.calls, ['setStyleId:dot']);
-      expect(companion.savedStyle, 'dot');
+      expect(companion.calls, ['setLook:dot']);
+      expect(companion.savedLook.styleId, 'dot');
       expect(selected(tester, 'Dot'), isTrue);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('customizes Dress-up with a base, hat, and top', (
+      tester,
+    ) async {
+      final companion = _FakeCompanionOverlay(granted: true);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            companion: companion,
+            patientSettings: PatientSettings(),
+          ),
+        ),
+      );
+      await pumpFor(tester, const Duration(milliseconds: 100));
+      // Classic has nothing to customize.
+      expect(find.text('Hat'), findsNothing);
+
+      await tester.tap(find.text('Dress-up'));
+      await pumpFor(tester, const Duration(milliseconds: 100));
+      expect(companion.savedLook.styleId, 'dress_up');
+      for (final label in [
+        'Base',
+        'Green circle',
+        'Orange triangle',
+        'Hat',
+        'Party hat',
+        'Cap',
+        'Top hat',
+        'Top',
+        'T-shirt',
+        'Scarf',
+      ]) {
+        expect(find.text(label), findsOneWidget, reason: label);
+      }
+
+      await tester.tap(find.text('Orange triangle'));
+      await pumpFor(tester, const Duration(milliseconds: 100));
+      await tester.scrollUntilVisible(
+        find.text('Top hat'),
+        50,
+        scrollable: find.byType(Scrollable).at(2),
+      );
+      await tester.tap(find.text('Top hat'));
+      await pumpFor(tester, const Duration(milliseconds: 100));
+      expect(companion.savedLook.choices['dress_up'], {
+        'base': 'triangle',
+        'hat': 'top_hat',
+      });
+      expect(
+        companion.savedLook.resolve(),
+        const DressUpCompanionStyle(base: TriangleBase(), hat: TopHat()),
+      );
+
+      // Switching style keeps the Dress-up choices for later.
+      await tester.dragUntilVisible(
+        find.text('Classic'),
+        find.byType(ListView).first,
+        const Offset(0, 200),
+      );
+      await tester.ensureVisible(find.text('Classic'));
+      await pumpFor(tester, const Duration(milliseconds: 300));
+      await tester.tap(find.text('Classic'));
+      await pumpFor(tester, const Duration(milliseconds: 100));
+      expect(find.text('Hat'), findsNothing);
+      expect(companion.savedLook.styleId, 'classic');
+      expect(companion.savedLook.choices['dress_up']?['hat'], 'top_hat');
       await tester.pumpWidget(const SizedBox());
     });
 
@@ -462,7 +533,7 @@ void main() {
     testWidgets('draws the saved style and switches when it changes', (
       tester,
     ) async {
-      native.styleId = 'dot';
+      native.look = const CompanionLook(styleId: 'dot');
       const styles = [ClassicCompanionStyle(), _DotStyle()];
       await tester.pumpWidget(
         const SizedBox(
@@ -477,12 +548,36 @@ void main() {
           .style;
       expect(drawn().id, 'dot');
 
-      await native.sendStyle(tester, 'classic');
+      await native.sendLook(tester, const CompanionLook(styleId: 'classic'));
       expect(drawn().id, 'classic');
 
       // An unknown style falls back to the first one.
-      await native.sendStyle(tester, 'gone');
+      await native.sendLook(tester, const CompanionLook(styleId: 'gone'));
       expect(drawn().id, 'classic');
+      await finish(tester);
+    });
+
+    testWidgets('draws the saved Dress-up choices', (tester) async {
+      native.look = const CompanionLook(
+        styleId: 'dress_up',
+        choices: {
+          'dress_up': {'base': 'triangle', 'hat': 'cap', 'top': 'scarf'},
+        },
+      );
+      await tester.pumpWidget(
+        const SizedBox(width: 96, height: 96, child: CompanionOverlayApp()),
+      );
+      await pumpFor(tester, const Duration(milliseconds: 100));
+      expect(
+        tester
+            .widget<CompanionCharacter>(find.byType(CompanionCharacter))
+            .style,
+        const DressUpCompanionStyle(
+          base: TriangleBase(),
+          hat: Cap(),
+          top: Scarf(),
+        ),
+      );
       await finish(tester);
     });
 
@@ -517,7 +612,7 @@ class _FakeNativeWindow {
   double y = 1000;
   double width = 96;
   double height = 96;
-  String? styleId;
+  CompanionLook look = const CompanionLook();
 
   Iterable<MethodCall> calls(String method) =>
       log.where((call) => call.method == method);
@@ -548,8 +643,8 @@ class _FakeNativeWindow {
           log.add(call);
           final args = call.arguments is Map ? call.arguments as Map : {};
           switch (call.method) {
-            case 'getStyle':
-              return styleId;
+            case 'getLook':
+              return look.toMap();
             case 'getLayout':
               return _layout();
             case 'moveTo':
@@ -570,13 +665,13 @@ class _FakeNativeWindow {
 
   /// Sends a move request from the service to the overlay, as the main app
   /// does through `CompanionOverlay.moveTo`.
-  /// Tells the overlay that a new style was chosen, as the service does.
-  Future<void> sendStyle(WidgetTester tester, String id) async {
+  /// Tells the overlay that a new look was chosen, as the service does.
+  Future<void> sendLook(WidgetTester tester, CompanionLook look) async {
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .handlePlatformMessage(
           _channel.name,
           const StandardMethodCodec().encodeMethodCall(
-            MethodCall('styleChanged', id),
+            MethodCall('lookChanged', look.toMap()),
           ),
           (_) {},
         );
@@ -679,16 +774,16 @@ class _FakeCompanionOverlay implements CompanionOverlay {
   @override
   Future<void> minimizeApp() async => calls.add('minimizeApp');
 
-  String? savedStyle;
+  CompanionLook savedLook = const CompanionLook();
   bool failSaving = false;
 
   @override
-  Future<String?> styleId() async => savedStyle;
+  Future<CompanionLook> look() async => savedLook;
 
   @override
-  Future<void> setStyleId(String id) async {
-    calls.add('setStyleId:$id');
+  Future<void> setLook(CompanionLook look) async {
+    calls.add('setLook:${look.styleId}');
     if (failSaving) throw PlatformException(code: 'failed');
-    savedStyle = id;
+    savedLook = look;
   }
 }

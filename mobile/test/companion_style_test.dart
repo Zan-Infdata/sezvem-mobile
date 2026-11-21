@@ -3,8 +3,11 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ixland_mobile/companion/companion_state.dart';
+import 'package:ixland_mobile/companion/styles/companion_look.dart';
 import 'package:ixland_mobile/companion/styles/companion_style.dart';
 import 'package:ixland_mobile/companion/styles/companion_styles.dart';
+import 'package:ixland_mobile/companion/styles/dress_up/dress_up_parts.dart';
+import 'package:ixland_mobile/companion/styles/dress_up/dress_up_style.dart';
 
 /// Checks the contract in `companion_style.dart` for every registered style.
 void main() {
@@ -22,6 +25,68 @@ void main() {
   test('unknown or missing IDs fall back to the first style', () {
     expect(companionStyleById(null), same(companionStyles.first));
     expect(companionStyleById('no-such-style'), same(companionStyles.first));
+  });
+
+  test('Dress-up offers 2 bases, 3 hats, and 2 tops, plus none', () {
+    final slots = {
+      for (final slot in const DressUpCompanionStyle().slots)
+        slot.id: [for (final option in slot.options) option.id],
+    };
+    expect(slots, {
+      'base': ['circle', 'triangle'],
+      'hat': ['none', 'party', 'cap', 'top_hat'],
+      'top': ['none', 'tshirt', 'scarf'],
+    });
+  });
+
+  test('Dress-up applies known choices and keeps the rest', () {
+    final style = const DressUpCompanionStyle().customize({
+      'base': 'triangle',
+      'hat': 'cap',
+      'top': 'no-such-top',
+      'shoes': 'boots',
+    });
+    expect(style.choices, {'base': 'triangle', 'hat': 'cap', 'top': 'none'});
+    expect(
+      style,
+      const DressUpCompanionStyle(base: TriangleBase(), hat: Cap()),
+    );
+  });
+
+  group('CompanionLook', () {
+    test('round-trips through the saved form', () {
+      const look = CompanionLook(
+        styleId: 'dress_up',
+        choices: {
+          'dress_up': {'base': 'triangle', 'hat': 'party'},
+        },
+      );
+      expect(CompanionLook.fromMap(look.toMap()), look);
+      expect(
+        look.resolve(),
+        const DressUpCompanionStyle(base: TriangleBase(), hat: PartyHat()),
+      );
+    });
+
+    test('bad saved data gives the default look', () {
+      final look = CompanionLook.fromMap({'style': 3, 'choices': '{oops'});
+      expect(look, const CompanionLook());
+      expect(look.resolve(), same(companionStyles.first));
+    });
+
+    test('keeps choices for each style separately', () {
+      final look = const CompanionLook()
+          .withChoice('dress_up', 'hat', 'cap')
+          .withChoice('other', 'hat', 'crown')
+          .withChoice('dress_up', 'top', 'scarf')
+          .withStyle('dress_up');
+      expect(look.choices, {
+        'dress_up': {'hat': 'cap', 'top': 'scarf'},
+        'other': {'hat': 'crown'},
+      });
+      expect(look.withStyle('classic').resolve().id, 'classic');
+      expect(look.resolve().choices['hat'], 'cap');
+    });
   });
 
   test('detects a style that skips an animation', () async {
@@ -45,8 +110,8 @@ void main() {
     expect(_same(rest, blink), isFalse);
   });
 
-  for (final style in companionStyles) {
-    group(style.name, () {
+  for (final style in [for (final s in companionStyles) ..._variants(s)]) {
+    group(_describe(style), () {
       for (final animation in CompanionAnimation.values) {
         test('shows the ${animation.name} animation', () async {
           final size = _windowFor(animation);
@@ -59,7 +124,8 @@ void main() {
           expect(
             _same(rest, active),
             isFalse,
-            reason: '${style.name} draws no change for ${animation.name}.',
+            reason:
+                '${_describe(style)} draws no change for ${animation.name}.',
           );
         });
       }
@@ -90,7 +156,7 @@ void main() {
                 _touchesEdge(pixels, size),
                 isFalse,
                 reason:
-                    '${style.name} draws past its ${size.width.round()}x'
+                    '${_describe(style)} draws past its ${size.width.round()}x'
                     '${size.height.round()} window during ${animation.name} '
                     'at $t facing ${facing.name}.',
               );
@@ -121,6 +187,23 @@ class _NoSadStyle extends CompanionStyle {
     );
   }
 }
+
+/// Every combination of [style]'s slot options, or the style alone.
+List<CompanionStyle> _variants(CompanionStyle style) {
+  var variants = [style];
+  for (final slot in style.slots) {
+    variants = [
+      for (final variant in variants)
+        for (final option in slot.options)
+          variant.customize({...variant.choices, slot.id: option.id}),
+    ];
+  }
+  return variants;
+}
+
+String _describe(CompanionStyle style) => style.choices.isEmpty
+    ? style.name
+    : '${style.name} ${style.choices.values.join(' + ')}';
 
 ui.Size _windowFor(CompanionAnimation animation) => switch (animation) {
   CompanionAnimation.backflip => CompanionStyle.backflipSize,

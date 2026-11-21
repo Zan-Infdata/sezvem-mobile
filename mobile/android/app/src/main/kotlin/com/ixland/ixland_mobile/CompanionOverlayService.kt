@@ -121,7 +121,7 @@ class CompanionOverlayService : Service() {
     private fun onWindowCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "getLayout" -> result.success(layout())
-            "getStyle" -> result.success(CompanionPrefs.styleId(this))
+            "getLook" -> result.success(CompanionPrefs.look(this))
             "moveTo" -> {
                 val params = params
                 val view = view
@@ -284,9 +284,9 @@ class CompanionOverlayService : Service() {
         )
     }
 
-    /** Switches a visible companion to the style saved as [id]. */
-    fun applyStyle(id: String) {
-        channel?.invokeMethod("styleChanged", id)
+    /** Switches a visible companion to [look], in the form [CompanionPrefs.look] returns. */
+    fun applyLook(look: Map<String, String?>) {
+        channel?.invokeMethod("lookChanged", look)
     }
 
     /** Removes the companion window and its engine. The service keeps running. */

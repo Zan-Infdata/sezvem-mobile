@@ -120,6 +120,37 @@ class CompanionPose {
   );
 }
 
+/// One choice for a [CompanionSlot], such as a particular hat.
+@immutable
+class CompanionOption {
+  const CompanionOption({required this.id, required this.name});
+
+  /// Stable ID saved in settings. Never change it after release.
+  final String id;
+
+  /// Name shown in settings.
+  final String name;
+}
+
+/// Something a person can customize on a style, such as its hat.
+@immutable
+class CompanionSlot {
+  const CompanionSlot({
+    required this.id,
+    required this.name,
+    required this.options,
+  });
+
+  /// Stable ID saved in settings. Never change it after release.
+  final String id;
+
+  /// Name shown in settings.
+  final String name;
+
+  /// The choices, in settings order. The first one is the default.
+  final List<CompanionOption> options;
+}
+
 /// A look for the companion.
 ///
 /// A style draws one frame from a [CompanionPose] and must show every
@@ -148,6 +179,16 @@ abstract class CompanionStyle {
 
   /// Name shown in settings.
   String get name;
+
+  /// What a person can customize on this style. Empty for a fixed style.
+  List<CompanionSlot> get slots => const [];
+
+  /// The chosen option ID for each slot in [slots].
+  Map<String, String> get choices => const {};
+
+  /// This style with [choices] applied, mapping slot IDs to option IDs.
+  /// Slots that are missing or unknown keep their current option.
+  CompanionStyle customize(Map<String, String> choices) => this;
 
   void paint(Canvas canvas, Size size, CompanionPose pose);
 }
