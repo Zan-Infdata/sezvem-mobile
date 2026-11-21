@@ -265,10 +265,10 @@ class _CompanionStylePreviewState extends State<CompanionStylePreview>
 
   @override
   Widget build(BuildContext context) {
-    // Styles draw for a window of restSize. Scale it down to fit.
+    // The character fills a window of the resting size. Scale it to fit.
     return FittedBox(
       child: SizedBox.fromSize(
-        size: CompanionStyle.restSize,
+        size: CompanionStyle.onScreen(CompanionStyle.restSize),
         child: CompanionCharacter(animator: _animator, style: widget.style),
       ),
     );

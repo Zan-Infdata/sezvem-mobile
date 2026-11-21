@@ -153,6 +153,15 @@ void main() {
               final pose = _poseAt(animation, t, facing);
               final pixels = await _render(style, size, pose);
               expect(
+                _drawsOutside(pixels, size),
+                isFalse,
+                reason:
+                    '${_describe(style)} draws more than '
+                    '${CompanionStyle.maxSideOverflow} units past the resting '
+                    'width during ${animation.name} at $t facing '
+                    '${facing.name}.',
+              );
+              expect(
                 _touchesEdge(pixels, size),
                 isFalse,
                 reason:
@@ -255,6 +264,24 @@ bool _same(Uint8List a, Uint8List b) {
     if (a[i] != b[i]) return false;
   }
   return true;
+}
+
+/// Whether any pixel is visible in the side columns a style must leave empty:
+/// farther than [CompanionStyle.maxSideOverflow] past the resting width.
+bool _drawsOutside(Uint8List rgba, ui.Size size) {
+  final width = size.width.round();
+  final height = size.height.round();
+  final margin =
+      ((size.width - CompanionStyle.restSize.width) / 2 -
+              CompanionStyle.maxSideOverflow)
+          .floor();
+  for (var x = 0; x < margin; x++) {
+    for (var y = 0; y < height; y++) {
+      if (rgba[(y * width + x) * 4 + 3] != 0) return true;
+      if (rgba[(y * width + width - 1 - x) * 4 + 3] != 0) return true;
+    }
+  }
+  return false;
 }
 
 /// Whether any pixel on the outer edge of the image is visible.

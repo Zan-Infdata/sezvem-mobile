@@ -19,7 +19,7 @@ typedef CompanionAction = Future<void> Function(CompanionActionContext context);
 
 /// Normal window size in logical pixels. Must match `WINDOW_SIZE_DP` in
 /// `CompanionOverlayService.kt`.
-const companionWindowSize = CompanionStyle.restSize;
+final companionWindowSize = CompanionStyle.onScreen(CompanionStyle.restSize);
 
 /// What an action can use while it runs.
 class CompanionActionContext {
@@ -46,11 +46,12 @@ class CompanionActionContext {
 
   final void Function() _onClose;
 
-  /// Grows the window to [size] while [body] runs, then restores the normal
-  /// size. The window grows upward from its bottom center, so the character
+  /// Grows the window to fit a style box of [size] in design units, such as
+  /// [CompanionStyle.backflipSize], while [body] runs. Then it restores the
+  /// normal size. The window grows upward from its bottom center, so the character
   /// stays where it is. Keep the window small: it blocks touches to other apps.
   Future<void> withRoom(Size size, Future<void> Function() body) async {
-    movement.updateLayout(await window.resize(size));
+    movement.updateLayout(await window.resize(CompanionStyle.onScreen(size)));
     try {
       await body();
     } finally {

@@ -1,6 +1,7 @@
-import 'dart:ui';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 
 import '../companion_state.dart';
 
@@ -154,22 +155,48 @@ class CompanionSlot {
 /// A look for the companion.
 ///
 /// A style draws one frame from a [CompanionPose] and must show every
-/// [CompanionAnimation]. It draws inside the overlay window, standing at the
-/// bottom center, in logical pixels. The window is [restSize] most of the time
-/// and grows upward to [backflipSize] or [inflateSize] only during those
-/// animations, so each one has to fit its size. Register new styles in
-/// `companion_styles.dart`.
+/// [CompanionAnimation]. It draws in design units, standing at the bottom
+/// center of a box that is [restSize] most of the time and grows upward to
+/// [backflipSize] or [inflateSize] only during those animations, so each one
+/// has to fit its box. The companion is shown [displayScale] times larger on
+/// screen, so the overlay window is [onScreen] of the box. Register new styles
+/// in `companion_styles.dart`.
 abstract class CompanionStyle {
   const CompanionStyle();
 
-  /// Window size while no large animation runs.
+  /// Box size in design units while no large animation runs.
   static const restSize = Size(96, 96);
 
-  /// Window size during a backflip: 64 more above the companion.
+  /// Box size during a backflip: 64 more above the companion.
   static const backflipSize = Size(96, 160);
 
-  /// Window size while inflating.
+  /// Box size while inflating.
   static const inflateSize = Size(136, 136);
+
+  /// How far in design units a style may draw past either side of
+  /// [restSize], in any animation. The window can grow wider while inflating,
+  /// but only this much of it needs to stay on screen.
+  static const maxSideOverflow = 8.0;
+
+  /// How many logical pixels on screen one design unit takes.
+  static const displayScale = 2.0;
+
+  /// The on-screen size in logical pixels of a box in design units.
+  static Size onScreen(Size design) => design * displayScale;
+
+  /// Room in logical pixels the companion needs around its resting window to
+  /// stay fully on screen during the backflip or inflation. The window grows
+  /// upward from its bottom center, so nothing is needed below. At the sides
+  /// only the drawing has to stay on screen, not the whole wider window.
+  static EdgeInsets get growthRoom {
+    final height = math.max(backflipSize.height, inflateSize.height);
+    const side = maxSideOverflow * displayScale;
+    return EdgeInsets.only(
+      left: side,
+      right: side,
+      top: (height - restSize.height) * displayScale,
+    );
+  }
 
   /// The largest [CompanionPose.inflate] value.
   static const maxInflate = 1.8;

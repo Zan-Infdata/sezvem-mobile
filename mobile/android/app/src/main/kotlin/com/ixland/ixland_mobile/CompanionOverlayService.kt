@@ -398,7 +398,7 @@ class CompanionOverlayService : Service() {
             private set
         private const val ENTRY_POINT = "companionOverlayMain"
         /** Must match `companionWindowSize` in `companion_actions.dart`. */
-        private const val WINDOW_SIZE_DP = 96
+        private const val WINDOW_SIZE_DP = 192
         private const val SAMPLE_RATE = 22_050
     }
 }

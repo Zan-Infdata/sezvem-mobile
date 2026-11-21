@@ -139,7 +139,12 @@ class _StylePainter extends CustomPainter {
   final CompanionPose pose;
 
   @override
-  void paint(Canvas canvas, Size size) => style.paint(canvas, size, pose);
+  void paint(Canvas canvas, Size size) {
+    // Styles draw in design units. Scale them up to the on-screen size.
+    const scale = CompanionStyle.displayScale;
+    canvas.scale(scale);
+    style.paint(canvas, size / scale, pose);
+  }
 
   @override
   bool shouldRepaint(_StylePainter oldDelegate) =>

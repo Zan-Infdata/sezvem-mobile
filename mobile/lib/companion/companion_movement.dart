@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:ui';
 
+import 'package:flutter/painting.dart';
 import 'package:flutter/scheduler.dart';
 
 import 'companion_window.dart';
@@ -17,6 +17,7 @@ class CompanionMovementController {
     required TickerProvider vsync,
     this.speed = 180,
     this.padding = 16,
+    this.reserve = EdgeInsets.zero,
   }) : _layout = layout,
        x = layout.x,
        y = layout.y {
@@ -31,6 +32,10 @@ class CompanionMovementController {
   /// Gap in logical pixels kept between the window and the usable screen
   /// edges for [pointForUv].
   final double padding;
+
+  /// Extra logical pixels kept free on each side for [pointForUv], so the
+  /// window can grow there without leaving the screen.
+  final EdgeInsets reserve;
 
   CompanionWindowLayout _layout;
   late final Ticker _ticker;
@@ -51,14 +56,18 @@ class CompanionMovementController {
   /// Converts a point in 0 to 1 screen coordinates to a window position.
   ///
   /// (0, 0) puts the window in the top-left corner and (1, 1) in the
-  /// bottom-right corner of the usable screen area, inset by [padding]. The
-  /// same coordinates give the same relative spot on any screen size.
+  /// bottom-right corner of the usable screen area, inset by [padding] plus
+  /// [reserve]. The same coordinates give the same relative spot on any
+  /// screen size. On a screen too small for the range, the window goes to the
+  /// top-left limit.
   Offset pointForUv(Offset uv) {
-    final inset = padding * _layout.density;
-    final left = _layout.screenLeft + inset;
-    final top = _layout.screenTop + inset;
-    final width = _layout.screenRight - inset - _layout.width - left;
-    final height = _layout.screenBottom - inset - _layout.height - top;
+    final density = _layout.density;
+    final left = _layout.screenLeft + (padding + reserve.left) * density;
+    final top = _layout.screenTop + (padding + reserve.top) * density;
+    final right = _layout.screenRight - (padding + reserve.right) * density;
+    final bottom = _layout.screenBottom - (padding + reserve.bottom) * density;
+    final width = right - _layout.width - left;
+    final height = bottom - _layout.height - top;
     return Offset(
       left + uv.dx.clamp(0.0, 1.0) * (width > 0 ? width : 0),
       top + uv.dy.clamp(0.0, 1.0) * (height > 0 ? height : 0),

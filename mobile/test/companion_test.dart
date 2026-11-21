@@ -388,6 +388,29 @@ void main() {
         const Offset(624, 1454),
       );
       expect(movement.pointForUv(const Offset(2, -1)), const Offset(1216, 132));
+
+      final reserved = CompanionMovementController(
+        window: CompanionWindow(
+          channel: const MethodChannel('test/companion/window'),
+        ),
+        layout: const CompanionWindowLayout(
+          x: 0,
+          y: 0,
+          width: 192,
+          height: 192,
+          screenLeft: 0,
+          screenTop: 100,
+          screenRight: 1440,
+          screenBottom: 3000,
+          density: 2,
+        ),
+        vsync: const TestVSync(),
+        reserve: const EdgeInsets.only(left: 40, right: 40, top: 128),
+      );
+      // The reserve adds 80 px at the sides and 256 px at the top.
+      expect(reserved.pointForUv(Offset.zero), const Offset(112, 388));
+      expect(reserved.pointForUv(const Offset(1, 1)), const Offset(1136, 2776));
+      reserved.dispose();
       movement.dispose();
     });
   });
@@ -408,11 +431,12 @@ void main() {
 
     Future<void> enter(WidgetTester tester) async {
       await tester.pumpWidget(
-        const SizedBox(width: 96, height: 96, child: CompanionOverlayApp()),
+        const SizedBox(width: 192, height: 192, child: CompanionOverlayApp()),
       );
-      await pumpFor(tester, const Duration(seconds: 1));
+      // The 200 px walk in takes about 1.1 seconds.
+      await pumpFor(tester, const Duration(seconds: 2));
       // Rest position is the right screen edge minus the window and margin.
-      expect(native.x, 976);
+      expect(native.x, 880);
     }
 
     Future<void> finish(WidgetTester tester) async {
@@ -427,7 +451,7 @@ void main() {
         'title': 'IXLand',
         'message': 'Hello world',
       });
-      expect(native.x, 976);
+      expect(native.x, 880);
       await finish(tester);
     });
 
@@ -435,7 +459,7 @@ void main() {
       await enter(tester);
       await tester.fling(companion, const Offset(-60, 0), 1000);
       await pumpFor(tester, const Duration(seconds: 2));
-      expect(native.x, -96);
+      expect(native.x, -192);
       expect(native.log.last.method, 'close');
       await finish(tester);
 
@@ -460,8 +484,8 @@ void main() {
       await tester.fling(companion, const Offset(0, -60), 1000);
       await pumpFor(tester, const Duration(seconds: 1));
       expect(native.calls('resize').map((c) => c.arguments), [
-        {'width': 96.0, 'height': 160.0},
-        {'width': 96.0, 'height': 96.0},
+        {'width': 192.0, 'height': 320.0},
+        {'width': 192.0, 'height': 192.0},
       ]);
       expect(native.calls('close'), isEmpty);
       await finish(tester);
@@ -495,8 +519,8 @@ void main() {
         'durationMs': 2000,
       });
       expect(native.calls('resize').single.arguments, {
-        'width': 136.0,
-        'height': 136.0,
+        'width': 272.0,
+        'height': 272.0,
       });
 
       // Inputs are still ignored while it shrinks back.
@@ -505,8 +529,8 @@ void main() {
       await pumpFor(tester, const Duration(milliseconds: 500));
       expect(native.calls('stopSound'), isNotEmpty);
       expect(native.calls('resize').last.arguments, {
-        'width': 96.0,
-        'height': 96.0,
+        'width': 192.0,
+        'height': 192.0,
       });
       expect(native.calls('close'), isEmpty);
       await finish(tester);
@@ -517,16 +541,17 @@ void main() {
 
       expect(await native.sendMove(tester, 0.5, 0.25), isTrue);
       await pumpFor(tester, const Duration(seconds: 5));
-      // 16 + 0.5 * (1080 - 96 - 32) and 16 + 0.25 * (2000 - 96 - 32).
-      expect(native.x, 492);
-      expect(native.y, 484);
+      // Padding 16 plus growth room 16 at the sides and 128 at the top:
+      // 32 + 0.5 * (1080 - 64 - 192) and 144 + 0.25 * (2000 - 160 - 192).
+      expect(native.x, 444);
+      expect(native.y, 556);
 
       // A running action declines the move.
       await tester.fling(companion, const Offset(0, 60), 1000);
       await pumpFor(tester, const Duration(milliseconds: 200));
       expect(await native.sendMove(tester, 0, 0), isFalse);
       await pumpFor(tester, const Duration(seconds: 3));
-      expect(native.x, 492);
+      expect(native.x, 444);
       await finish(tester);
     });
 
@@ -537,8 +562,8 @@ void main() {
       const styles = [ClassicCompanionStyle(), _DotStyle()];
       await tester.pumpWidget(
         const SizedBox(
-          width: 96,
-          height: 96,
+          width: 192,
+          height: 192,
           child: CompanionOverlayApp(styles: styles),
         ),
       );
@@ -565,7 +590,7 @@ void main() {
         },
       );
       await tester.pumpWidget(
-        const SizedBox(width: 96, height: 96, child: CompanionOverlayApp()),
+        const SizedBox(width: 192, height: 192, child: CompanionOverlayApp()),
       );
       await pumpFor(tester, const Duration(milliseconds: 100));
       expect(
@@ -586,7 +611,7 @@ void main() {
       await tester.drag(companion, const Offset(20, 0), warnIfMissed: false);
       await pumpFor(tester, const Duration(milliseconds: 500));
       expect(native.calls('close'), isEmpty);
-      expect(native.x, 976);
+      expect(native.x, 880);
       await finish(tester);
     });
   });
@@ -610,8 +635,8 @@ class _FakeNativeWindow {
   final log = <MethodCall>[];
   double x = 1080;
   double y = 1000;
-  double width = 96;
-  double height = 96;
+  double width = 192;
+  double height = 192;
   CompanionLook look = const CompanionLook();
 
   Iterable<MethodCall> calls(String method) =>
@@ -621,8 +646,8 @@ class _FakeNativeWindow {
     log.clear();
     x = 1080;
     y = 1000;
-    width = 96;
-    height = 96;
+    width = 192;
+    height = 192;
   }
 
   Map<String, Object> _layout() => {

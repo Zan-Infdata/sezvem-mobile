@@ -81,6 +81,8 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
       window: _window,
       layout: layout,
       vsync: this,
+      // Leave room for the backflip and inflation to grow the window.
+      reserve: CompanionStyle.growthRoom,
     );
     final actions = _actions = CompanionActionController(
       actions: widget.actions ?? testCompanionActions(),
