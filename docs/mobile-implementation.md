@@ -264,3 +264,13 @@ Build and update both Android APKs, open **IXLand Watch**, tap **Start**, and gr
 The WHOOP and Samsung adapters capture the phone's receipt time on each heart-rate event. The batch buffer stores those times with their readings and serializes them as UTC ISO 8601 strings. Every batch POST includes the top-level `sample_timestamps` array in the same order as `hr`. Filtering out a BPM value removes the corresponding timestamp. Temperature and step totals remain batch fields.
 
 **Batch JSON (debug)** shows the POST body. A merged batch retains each reading's receipt time, and an unconfirmed upload retries the original pairs. Flutter buffer, widget, and loopback HTTP tests cover these paths. Live upload requires the backend update that accepts the field. [Deployed API documentation](https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/docs)
+
+## Heart-rate-only sleep estimation
+
+`mobile/lib/wearables/sleep_estimator.dart` looks for a completed low-heart-rate period in the existing WHOOP and Samsung streams. It calculates a median for each UTC minute with at least three valid BPM readings and keeps up to 24 hours of history per patient, provider, and device. The threshold is 105% of the 10th percentile of those minute medians. A candidate needs at least 60 covered minutes below or at the threshold, then 15 consecutive covered minutes above it. Short interruptions can stay within the candidate. More than five missing minutes break the candidate. The estimated wake time is the start of the confirmed higher-heart-rate run. [NOOP heart-rate-only approach](https://github.com/ryanbr/noop/blob/main/Packages/StrandAnalytics/Sources/StrandAnalytics/SleepStager.swift#L3025)
+
+The estimator operates after each UTC minute closes. The buffer holds a confirmed pair until the backend acknowledges its batch. A rejected batch can still grow, and an uncertain delivery retries its immutable body. If a short upload interval already sent the wake readings, the pair can travel in its own batch. `extra.sleep_start` and `extra.sleep_end` appear together in **Batch JSON (debug)**. The estimate and pending batches are held in memory during the current app session.
+
+The estimate requires overnight heart-rate coverage, with the watch companion open and measuring for Samsung. It can confuse sustained quiet wakefulness with sleep. The window provides timing only. The backend still needs beat-to-beat intervals for HRV.
+
+`flutter test test/sleep_estimator_test.dart` covers a session spanning midnight, transient spikes, sparse data and disconnect gaps, patient and device isolation, the POST shape, and acknowledgment and retry behavior. Verify estimates against a recorded sleep window on a physical wearable before using them for recovery assessments.

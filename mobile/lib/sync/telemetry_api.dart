@@ -48,8 +48,13 @@ class TelemetryApi {
         'spo2': spo2,
       'extra': {
         'batch_interval_in_seconds': batch['batch_interval_in_seconds'],
-        if (batch['sleep_start'] case final String start) 'sleep_start': start,
-        if (batch['sleep_end'] case final String end) 'sleep_end': end,
+        if (batch case {
+          'sleep_start': final String start,
+          'sleep_end': final String end,
+        }) ...{
+          'sleep_start': start,
+          'sleep_end': end,
+        },
       },
     };
   }

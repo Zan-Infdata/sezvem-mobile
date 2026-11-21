@@ -1,3 +1,6 @@
+import 'dart:collection';
+
+import 'sleep_estimator.dart';
 import 'wearable_adapter.dart';
 
 /// True acknowledges the batch. False confirms it was not accepted.
@@ -57,6 +60,7 @@ final class MetricBatchBuffer {
       () => MetricBatch._(providerId, deviceId, startedAt, interval),
     );
     batch._samples.add(sample);
+    if (sample is HeartRateSample) connection.sleepEstimator.add(sample);
     return batch;
   }
 
@@ -94,15 +98,37 @@ final class MetricBatchBuffer {
       // A new device can start feeding the buffer while a send is in flight.
       for (final entry in _connections.entries.toList()) {
         final connection = entry.value;
+        connection.pendingSleep.addAll(
+          connection.sleepEstimator.completeBefore(boundary),
+        );
         var attempt = connection.unconfirmed;
         if (attempt == null) {
           final windows = connection.windows.values
               .where((window) => window.startedAt.isBefore(boundary))
               .toList();
-          if (windows.isEmpty) continue;
+          final sleep = connection.pendingSleep.isEmpty
+              ? null
+              : connection.pendingSleep.first;
+          if (windows.isEmpty) {
+            if (sleep == null) {
+              if (connection.isEmpty) _connections.remove(entry.key);
+              continue;
+            }
+            // Short upload periods can send the last wake readings before the
+            // estimator sees the entire minute. The session can travel alone.
+            final startedAt = boundary.subtract(interval);
+            final window = MetricBatch._(
+              entry.key.$2,
+              entry.key.$3,
+              startedAt,
+              interval,
+            );
+            connection.windows[startedAt] = window;
+            windows.add(window);
+          }
           windows.sort((a, b) => a.startedAt.compareTo(b.startedAt));
           final number = connection.batchNumber ??= _nextBatchNumber++;
-          attempt = _BatchAttempt(windows, number, entry.key.$1);
+          attempt = _BatchAttempt(windows, number, entry.key.$1, sleep);
         }
 
         final bool accepted;
@@ -116,6 +142,7 @@ final class MetricBatchBuffer {
 
         connection.unconfirmed = null;
         connection.batchNumber = null;
+        if (attempt.sleep != null) connection.pendingSleep.removeFirst();
         for (final entry in attempt.sampleCounts.entries) {
           final window = entry.key;
           // Leave samples that arrived after this payload was created.
@@ -124,7 +151,7 @@ final class MetricBatchBuffer {
             connection.windows.remove(window.startedAt);
           }
         }
-        if (connection.windows.isEmpty) _connections.remove(entry.key);
+        if (connection.isEmpty) _connections.remove(entry.key);
       }
     } finally {
       _flushing = false;
@@ -134,13 +161,22 @@ final class MetricBatchBuffer {
 
 final class _ConnectionBuffer {
   final windows = <DateTime, MetricBatch>{};
+  final sleepEstimator = SleepEstimator();
+  final pendingSleep = Queue<EstimatedSleepSession>();
   int? batchNumber;
   _BatchAttempt? unconfirmed;
+
+  bool get isEmpty =>
+      windows.isEmpty && sleepEstimator.isEmpty && pendingSleep.isEmpty;
 }
 
 final class _BatchAttempt {
-  _BatchAttempt(List<MetricBatch> windows, int batchNumber, String? patientId)
-    : sampleCounts = {
+  _BatchAttempt(
+    List<MetricBatch> windows,
+    int batchNumber,
+    String? patientId,
+    this.sleep,
+  ) : sampleCounts = {
         for (final window in windows) window: window.sampleCount,
       } {
     final samples = windows.expand((window) => window._samples);
@@ -154,8 +190,8 @@ final class _BatchAttempt {
       'sample_timestamps': List<String>.unmodifiable(
         heartRates.map((sample) => sample.receivedAt.toUtc().toIso8601String()),
       ),
-      'sleep_start': null,
-      'sleep_end': null,
+      'sleep_start': sleep?.start.toIso8601String(),
+      'sleep_end': sleep?.end.toIso8601String(),
       'temperature': List<double>.unmodifiable(
         samples.whereType<TemperatureSample>().map((sample) => sample.celsius),
       ),
@@ -169,5 +205,6 @@ final class _BatchAttempt {
   }
 
   final Map<MetricBatch, int> sampleCounts;
+  final EstimatedSleepSession? sleep;
   late final Map<String, Object?> payload;
 }

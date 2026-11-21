@@ -14,6 +14,8 @@ Configure the full POST endpoint with `BATCH_API_URL` and set the patient ID in 
 
 Every mobile batch includes `sample_timestamps` as a top-level array of UTC ISO 8601 strings. Entry `i` is the phone's receipt time for `hr[i]`. A batch with no heart-rate entries uses an empty array. See [sample timestamp verification](mobile-implementation.md#heart-rate-sample-timestamps).
 
+The app sends an estimated sleep window as a pair of UTC timestamp strings in `extra.sleep_start` and `extra.sleep_end`. An estimate can accompany a regular batch or travel in a batch with an empty `sample_timestamps` array. Regular batches omit the pair. See [sleep estimation](mobile-implementation.md#heart-rate-only-sleep-estimation).
+
 ## Wearable metric upload
 
 Send one JSON object per batch over an authenticated HTTPS POST. Use `POST /v1/metric-batches` as the proposed route and `Content-Type: application/json`. All ten fields are required. Send both sleep fields as JSON `null` for regular batches. [JSON format](https://www.rfc-editor.org/rfc/rfc8259.html)
