@@ -61,7 +61,7 @@ When both timestamps are present, the backend uses the sleep window to calculate
 
 ## Configurable upload cadence
 
-- Configure a positive integer `batch_upload_interval_minutes` as the target time between upload runs. Confirm the default and configuration source with the backend developer. Start with measurement windows of the same length. A five-minute configuration uses 300-second windows, so the example covers 10:00 UTC up to 10:05 UTC.
+- Set `BATCH_UPLOAD_INTERVAL_SECONDS` to a positive whole number to configure the mobile upload cadence and window length. The prototype defaults to 60 seconds. The example uses a 300-second configuration and covers 10:00 UTC up to 10:05 UTC.
 - At each upload run, send completed windows. When a batch is known to have been rejected or never delivered, keep it in the buffer and append new completed windows from the same connection. Keep its first window start, append the heart-rate samples in order, and set `batch_interval_in_seconds` to the span through the end of the last included window. Two consecutive five-minute windows cover 600 seconds. Apply interval changes to new windows and leave unconfirmed payloads intact.
 - Android may delay background uploads. If the app uses periodic WorkManager jobs, their minimum repeat interval is 15 minutes and run times depend on system scheduling. Agree on an acceptable delay and confirm whether the selected cadence must hold while the app is closed. [Android periodic work scheduling](https://developer.android.com/develop/background-work/background-tasks/persistent/getting-started/define-work#schedule_periodic_work)
 

@@ -5,7 +5,7 @@ The current implementation includes placeholder sign-in, the bundled provider pi
 ## Product flow
 
 1. The patient signs into the Flutter app and opens the recovery episode assigned by the backend. The app explains which wearable data will be shared and lets the patient link a WHOOP or a Samsung Galaxy Watch.
-2. The app reads available observations, saves them in a local queue, and sends POST requests on a configurable minute interval. Each request contains one measurement window. The app shows the wearable connection, latest measurement time, and last successful upload. See the [backend contract](contracts.md#wearable-metric-upload).
+2. The app reads available observations, saves them in a local queue, and sends POST requests on a configurable cadence in seconds. Each request contains one measurement window. The app shows the wearable connection, latest measurement time, and last successful upload. See the [backend contract](contracts.md#wearable-metric-upload).
 3. The backend processes the observations and returns a recovery status and any associated notices. The patient sees the latest status, when it was assessed, and any next step supplied by the care team through the backend. A completed sleep session sent with a batch gives the backend the time window for calculating HRV from beat-to-beat intervals.
 4. A future doctor web app presents an overview of assigned patients, surfaces reported complications for review, and distinguishes cases with missing or stale data. It will consume the backend's assessments. Its design and implementation follow the mobile work.
 

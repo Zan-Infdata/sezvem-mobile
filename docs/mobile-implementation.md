@@ -97,6 +97,6 @@ The preview shows `null` for `patient_id` and `steps` until sign-in supplies a p
 
 ## Batch interval configuration
 
-Set a positive whole number with `BATCH_UPLOAD_INTERVAL_SECONDS`. A positive `BATCH_UPLOAD_INTERVAL_MINUTES` still works when a valid seconds override is absent. With neither valid setting, the app uses 60 seconds. Rerun the app after changing a build-time setting.
+Set a positive whole number with `BATCH_UPLOAD_INTERVAL_SECONDS`. The app defaults to 60 seconds if the value is absent or invalid. Rerun the app after changing the build-time setting.
 
 From `mobile/`, run `flutter run --dart-define=BATCH_UPLOAD_INTERVAL_SECONDS=10` and connect a wearable. When the next 10-second window closes, check that **Batch JSON (debug)** shows `batch_interval_in_seconds` of 10 and the pending sample count drops for the accepted readings. The widget test also verifies the override with `flutter test --dart-define=BATCH_UPLOAD_INTERVAL_SECONDS=10 test/device_flow_test.dart`.

@@ -78,9 +78,7 @@ void main() {
     const configuredSeconds = int.fromEnvironment(
       'BATCH_UPLOAD_INTERVAL_SECONDS',
     );
-    if (configuredSeconds > 0) {
-      expect(interval.inSeconds, configuredSeconds);
-    }
+    expect(interval.inSeconds, configuredSeconds > 0 ? configuredSeconds : 60);
     final start = MetricBatchBuffer(
       interval: interval,
     ).windowStart(DateTime.now()).subtract(interval);

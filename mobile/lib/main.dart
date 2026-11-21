@@ -38,13 +38,13 @@ class LoginScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const seconds = int.fromEnvironment('BATCH_UPLOAD_INTERVAL_SECONDS');
-    const legacyMinutes = int.fromEnvironment('BATCH_UPLOAD_INTERVAL_MINUTES');
-    const fallbackSeconds = legacyMinutes > 0
-        ? legacyMinutes * Duration.secondsPerMinute
-        : 60;
+    const defaultSeconds = 60;
+    const seconds = int.fromEnvironment(
+      'BATCH_UPLOAD_INTERVAL_SECONDS',
+      defaultValue: defaultSeconds,
+    );
     const batchInterval = Duration(
-      seconds: seconds > 0 ? seconds : fallbackSeconds,
+      seconds: seconds > 0 ? seconds : defaultSeconds,
     );
     return Scaffold(
       appBar: AppBar(title: const Text('Sign in')),
