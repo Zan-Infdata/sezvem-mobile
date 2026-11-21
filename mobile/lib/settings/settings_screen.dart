@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -8,6 +9,7 @@ import '../companion/companion_state.dart';
 import '../companion/styles/companion_look.dart';
 import '../companion/styles/companion_style.dart';
 import '../companion/styles/companion_styles.dart';
+import '../debug/simulated_night_screen.dart';
 import '../sync/patient_api.dart';
 import 'patient_settings.dart';
 
@@ -128,7 +130,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final look = _look;
     final selected = look?.resolve(widget.styles);
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(
+        title: const Text('Settings'),
+        actions: [
+          if (kDebugMode)
+            IconButton(
+              tooltip: 'Replay simulated night',
+              icon: const Icon(Icons.bedtime_outlined),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SimulatedNightScreen(),
+                ),
+              ),
+            ),
+        ],
+      ),
       body: ListView(
         children: [
           Padding(

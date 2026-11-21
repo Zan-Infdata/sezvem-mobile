@@ -274,3 +274,11 @@ The estimator operates after each UTC minute closes. The buffer holds a confirme
 The estimate requires overnight heart-rate coverage, with the watch companion open and measuring for Samsung. It can confuse sustained quiet wakefulness with sleep. The window provides timing only. The backend still needs beat-to-beat intervals for HRV.
 
 `flutter test test/sleep_estimator_test.dart` covers a session spanning midnight, transient spikes, sparse data and disconnect gaps, patient and device isolation, the POST shape, and acknowledgment and retry behavior. Verify estimates against a recorded sleep window on a physical wearable before using them for recovery assessments.
+
+## Simulated night replay
+
+In a debug build, open **Connected devices → Settings** and tap the moon icon labeled **Replay simulated night**. The replay uses 23:14 on the previous local calendar date through 06:57 on the phone's current date. It generates three BPM readings per minute with a sleeping average of 53 BPM, followed by 15 minutes of higher readings to confirm the estimated wake time. The screen displays the estimated times in local time and the batch timestamps in UTC.
+
+The replay uses a separate in-memory batch buffer and the regular telemetry payload mapper. Its local sender captures the session batch for display and acknowledges the other synthetic batches in memory. It does not use the active patient ID or send HTTP requests.
+
+`flutter test test/simulated_night_test.dart` checks the average, the exact boundaries, and the JSON fields using a fixed local date.
