@@ -296,12 +296,12 @@ void main() {
         'Green circle',
         'Orange triangle',
         'Hat',
-        'Party hat',
+        'Cat ears',
         'Cap',
         'Top hat',
         'Top',
         'T-shirt',
-        'Scarf',
+        "Doctor's coat",
       ]) {
         expect(find.text(label), findsOneWidget, reason: label);
       }
@@ -561,7 +561,7 @@ void main() {
       native.look = const CompanionLook(
         styleId: 'dress_up',
         choices: {
-          'dress_up': {'base': 'triangle', 'hat': 'cap', 'top': 'scarf'},
+          'dress_up': {'base': 'triangle', 'hat': 'cap', 'top': 'doctor_coat'},
         },
       );
       await tester.pumpWidget(
@@ -575,7 +575,7 @@ void main() {
         const DressUpCompanionStyle(
           base: TriangleBase(),
           hat: Cap(),
-          top: Scarf(),
+          top: DoctorsCoat(),
         ),
       );
       await finish(tester);

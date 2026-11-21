@@ -34,8 +34,8 @@ void main() {
     };
     expect(slots, {
       'base': ['circle', 'triangle'],
-      'hat': ['none', 'party', 'cap', 'top_hat'],
-      'top': ['none', 'tshirt', 'scarf'],
+      'hat': ['none', 'cat_ears', 'cap', 'top_hat'],
+      'top': ['none', 'tshirt', 'doctor_coat'],
     });
   });
 
@@ -58,13 +58,13 @@ void main() {
       const look = CompanionLook(
         styleId: 'dress_up',
         choices: {
-          'dress_up': {'base': 'triangle', 'hat': 'party'},
+          'dress_up': {'base': 'triangle', 'hat': 'cat_ears'},
         },
       );
       expect(CompanionLook.fromMap(look.toMap()), look);
       expect(
         look.resolve(),
-        const DressUpCompanionStyle(base: TriangleBase(), hat: PartyHat()),
+        const DressUpCompanionStyle(base: TriangleBase(), hat: CatEars()),
       );
     });
 
@@ -78,10 +78,10 @@ void main() {
       final look = const CompanionLook()
           .withChoice('dress_up', 'hat', 'cap')
           .withChoice('other', 'hat', 'crown')
-          .withChoice('dress_up', 'top', 'scarf')
+          .withChoice('dress_up', 'top', 'doctor_coat')
           .withStyle('dress_up');
       expect(look.choices, {
-        'dress_up': {'hat': 'cap', 'top': 'scarf'},
+        'dress_up': {'hat': 'cap', 'top': 'doctor_coat'},
         'other': {'hat': 'crown'},
       });
       expect(look.withStyle('classic').resolve().id, 'classic');

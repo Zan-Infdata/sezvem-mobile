@@ -22,11 +22,15 @@ class DressUpCompanionStyle extends CompanionStyle {
   static const bases = <DressUpBase>[CircleBase(), TriangleBase()];
   static const hats = <DressUpAccessory>[
     NoAccessory(),
-    PartyHat(),
+    CatEars(),
     Cap(),
     TopHat(),
   ];
-  static const tops = <DressUpAccessory>[NoAccessory(), TShirt(), Scarf()];
+  static const tops = <DressUpAccessory>[
+    NoAccessory(),
+    TShirt(),
+    DoctorsCoat(),
+  ];
 
   /// Body radius at normal size. Smaller than Classic to leave room for hats.
   static const bodyRadius = 23.0;

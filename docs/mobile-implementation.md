@@ -177,10 +177,10 @@ A style can also offer `slots`, things a person customizes such as a hat. Each `
 | Slot | Options |
 | --- | --- |
 | Base | Green circle, Orange triangle |
-| Hat | None, Party hat, Cap, Top hat |
-| Top | None, T-shirt, Scarf |
+| Hat | None, Cat ears, Cap, Top hat |
+| Top | None, T-shirt, Doctor's coat |
 
-Both bases have larger eyes with a shine dot than Classic. The Dress-up body is smaller than Classic, with a 23 instead of a 30 logical pixel radius, so a hat still fits the window while the companion inflates or does a backflip. All bases share the same animations. Hats and tops are drawn on the body, so they move, spin, squash, and grow with it. The cap's bill and the scarf's loose end follow the facing direction. Tops are clipped to the body outline, so they fit any base.
+Both bases have larger eyes with a shine dot than Classic. The Dress-up body is smaller than Classic, with a 23 instead of a 30 logical pixel radius, so a hat still fits the window while the companion inflates or does a backflip. All bases share the same animations. Hats and tops are drawn on the body, so they move, spin, squash, and grow with it. The cap's bill and the coat's pocket pen follow the facing direction, and the stethoscope hangs on the other side. Cat ears take the body color and droop when sad. Tops are clipped to the body outline, so they fit any base. Saved choices for a part that was removed, such as the earlier party hat and scarf, fall back to **None**.
 
 To add a base, extend `DressUpBase` with an outline, colors, and where the eyes, mouth, neck, and hat go, in multiples of the body radius. To add a hat or top, extend `DressUpAccessory` and draw it from the `DressUpBody` it receives. Add the part to `bases`, `hats`, or `tops` in `DressUpCompanionStyle`. The style test then checks it with every other part.
 
@@ -214,7 +214,7 @@ flutter run
 
 On a physical Android phone, tap **TEST**, grant access, and check that the companion walks in over the home screen. Open another app and confirm you can tap and scroll around the character. Try each input from the table, and check that other inputs do nothing while an action runs, especially during the two sad seconds. Hold with the phone's sound on to hear the inflating sound. Check the backflip and inflation aren't clipped and the character doesn't jump when the window resizes. Rotate the phone while it's visible and check it stays on screen. Leave IXLand in the background and check that the companion walks to a new spot every 4 to 8 seconds without leaving the screen. Swipe it away and check it walks back in within 8 seconds. Open IXLand and check it stops moving. Use **Stop** in the notification and check the companion and the notification go away. Open **Settings** and check that **Classic** is selected and its preview animates. Choose **Dress-up**, try each base, hat, and top, and check that the visible companion changes right away. Run each input with a hat on and check that the hat stays inside the window during the backflip and inflation.
 
-Flutter analysis and all 271 tests passed, and the debug APK built. The companion hasn't been run on a device yet.
+Flutter analysis and all 274 tests passed, and the debug APK built. The companion hasn't been run on a device yet.
 
 ## Live telemetry API
 

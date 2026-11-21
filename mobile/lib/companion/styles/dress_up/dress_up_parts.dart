@@ -183,42 +183,46 @@ class NoAccessory extends DressUpAccessory {
   void paint(Canvas canvas, DressUpBody body) {}
 }
 
-/// A striped cone with a pompom.
-class PartyHat extends DressUpAccessory {
-  const PartyHat();
+/// Two pointed cat ears in the body color with pink insides.
+class CatEars extends DressUpAccessory {
+  const CatEars();
 
   @override
-  String get id => 'party';
+  String get id => 'cat_ears';
   @override
-  String get name => 'Party hat';
+  String get name => 'Cat ears';
 
   @override
   void paint(Canvas canvas, DressUpBody body) {
     final r = body.radius;
-    final brim = body.hatPoint;
-    final half = body.hatWidth * 0.36;
-    final tip = brim + Offset(0, -0.6 * r);
-    final cone = Path()
-      ..moveTo(brim.dx - half, brim.dy)
-      ..lineTo(tip.dx, tip.dy)
-      ..lineTo(brim.dx + half, brim.dy)
-      ..close();
-    canvas.drawPath(cone, Paint()..color = const Color(0xFFEC407A));
-    canvas.save();
-    canvas.clipPath(cone);
-    final stripe = Paint()
-      ..color = const Color(0xFFFFEB3B)
-      ..strokeWidth = r * 0.09;
-    for (final t in [0.3, 0.62]) {
-      final y = brim.dy - 0.6 * r * t;
-      canvas.drawLine(
-        Offset(brim.dx - half, y + r * 0.1),
-        Offset(brim.dx + half, y - r * 0.1),
-        stripe,
+    final base = body.base;
+    final fur = Color.lerp(base.dark, base.sadDark, body.sadness)!;
+    // Ears droop outward a little when sad.
+    final droop = body.sadness * 0.35;
+    for (final side in [-1.0, 1.0]) {
+      canvas.save();
+      // The ear root sits just inside the head so it grows out of it.
+      canvas.translate(
+        side * body.hatWidth * 0.34,
+        body.hatPoint.dy + r * 0.12,
       );
+      canvas.rotate(side * (0.25 + droop));
+      final height = r * 0.55;
+      final half = r * 0.24;
+      final outer = Path()
+        ..moveTo(-half, 0)
+        ..quadraticBezierTo(-half * 0.4, -height * 0.7, 0, -height)
+        ..quadraticBezierTo(half * 0.4, -height * 0.7, half, 0)
+        ..close();
+      canvas.drawPath(outer, Paint()..color = fur);
+      final inner = Path()
+        ..moveTo(-half * 0.55, -r * 0.04)
+        ..quadraticBezierTo(-half * 0.2, -height * 0.55, 0, -height * 0.75)
+        ..quadraticBezierTo(half * 0.2, -height * 0.55, half * 0.55, -r * 0.04)
+        ..close();
+      canvas.drawPath(inner, Paint()..color = const Color(0xFFF8BBD0));
+      canvas.restore();
     }
-    canvas.restore();
-    canvas.drawCircle(tip, r * 0.1, Paint()..color = const Color(0xFFFFFFFF));
   }
 }
 
@@ -348,36 +352,96 @@ class TShirt extends DressUpAccessory {
   }
 }
 
-/// A red scarf around the neck with its end trailing behind.
-class Scarf extends DressUpAccessory {
-  const Scarf();
+/// A white doctor's coat with lapels, a pen in the pocket, and a
+/// stethoscope around the neck.
+class DoctorsCoat extends DressUpAccessory {
+  const DoctorsCoat();
 
   @override
-  String get id => 'scarf';
+  String get id => 'doctor_coat';
   @override
-  String get name => 'Scarf';
+  String get name => "Doctor's coat";
 
   @override
   void paint(Canvas canvas, DressUpBody body) {
     final r = body.radius;
-    final top = body.neckY - r * 0.08;
-    final red = Paint()..color = const Color(0xFFE53935);
+    final top = body.neckY - r * 0.06;
+    final white = Paint()..color = const Color(0xFFFAFAFA);
+    final seam = Paint()
+      ..color = const Color(0xFFB0BEC5)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = r * 0.05
+      ..strokeCap = StrokeCap.round;
     canvas.save();
     canvas.clipPath(body.outline);
-    canvas.drawRect(Rect.fromLTRB(-2 * r, top, 2 * r, top + r * 0.2), red);
-    canvas.restore();
-    // The loose end hangs on the side away from where it faces.
-    canvas.save();
-    canvas.translate(-body.direction * r * 0.3, top + r * 0.12);
-    canvas.rotate(-body.direction * 0.25);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(-r * 0.1, 0, r * 0.2, r * 0.34),
-        Radius.circular(r * 0.05),
+    canvas.drawRect(Rect.fromLTRB(-2 * r, top, 2 * r, 2 * r), white);
+    // A light blue scrub top shows in the V of the open coat.
+    canvas.drawPath(
+      Path()
+        ..moveTo(-r * 0.22, top)
+        ..lineTo(0, top + r * 0.32)
+        ..lineTo(r * 0.22, top)
+        ..close(),
+      Paint()..color = const Color(0xFF80DEEA),
+    );
+    // Lapels and the front edge.
+    for (final side in [-1.0, 1.0]) {
+      canvas.drawLine(
+        Offset(side * r * 0.22, top),
+        Offset(0, top + r * 0.32),
+        seam,
+      );
+    }
+    canvas.drawLine(Offset(0, top + r * 0.32), Offset(0, 2 * r), seam);
+    // Breast pocket with a pen, on the side it faces.
+    final pocket = Offset(body.direction * r * 0.42, top + r * 0.2);
+    canvas.drawLine(
+      pocket + Offset(0, -r * 0.08),
+      pocket + Offset(0, r * 0.06),
+      Paint()
+        ..color = const Color(0xFF1E88E5)
+        ..strokeWidth = r * 0.06
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawRect(
+      Rect.fromCenter(
+        center: pocket + Offset(0, r * 0.1),
+        width: r * 0.24,
+        height: r * 0.16,
       ),
-      Paint()..color = const Color(0xFFC62828),
+      seam,
     );
     canvas.restore();
+    // Stethoscope: tubing around the neck down to a chest piece.
+    final tube = Paint()
+      ..color = const Color(0xFF455A64)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = r * 0.06
+      ..strokeCap = StrokeCap.round;
+    final side = -body.direction;
+    canvas.drawPath(
+      Path()
+        ..moveTo(-r * 0.3, top - r * 0.02)
+        ..quadraticBezierTo(0, top + r * 0.16, r * 0.3, top - r * 0.02),
+      tube,
+    );
+    final chest = Offset(side * r * 0.32, top + r * 0.36);
+    canvas.drawPath(
+      Path()
+        ..moveTo(side * r * 0.3, top - r * 0.02)
+        ..quadraticBezierTo(
+          side * r * 0.42,
+          top + r * 0.18,
+          chest.dx,
+          chest.dy,
+        ),
+      tube,
+    );
+    canvas.drawCircle(
+      chest,
+      r * 0.07,
+      Paint()..color = const Color(0xFF90A4AE),
+    );
   }
 }
 
