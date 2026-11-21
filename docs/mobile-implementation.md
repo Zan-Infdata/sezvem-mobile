@@ -87,29 +87,56 @@ Flutter analysis and all nine tests passed. Both debug APKs built with matching 
 
 ## Companion overlay test
 
-The companion is a small animated character that appears over other Android apps. This first version is a manual test with placeholder art and a placeholder tap action.
+The companion is a small animated character that appears over other Android apps. This version is a manual test with placeholder art and six test actions.
 
 1. On **Connected devices**, tap **TEST** below **Add device**. The first time, Android opens **Display over other apps** for IXLand. Turn it on and go back. If access stays off, the app explains why it can't continue.
 2. IXLand moves to the background. The companion walks in from the right edge and rests near the right side of the screen, over whatever app is visible. The app underneath stays usable outside the character.
-3. Tap the companion to see a **Hello world** alert. Swipe it left or right and it runs off that edge, and its window closes. A short drag snaps it back.
+3. Interact with the companion. It runs one action at a time and ignores other input until the current action ends.
+
+| Input | Test action |
+| --- | --- |
+| Tap | Bounces once and shows a **Hello world** alert. |
+| Swipe left or right | Runs off that edge and its window closes. |
+| Swipe up | Jumps and does a backflip. |
+| Swipe down | Looks sad for two seconds. |
+| Hold | Plays an inflating sound and grows to 1.8 times its size over two seconds. Shrinks back on release. |
+
+A short drag snaps back without triggering an action.
 
 | Path | Role |
 | --- | --- |
 | `mobile/lib/companion/companion_overlay.dart` | Main-app interface to check and request overlay access, show and hide the companion, and minimize the app. |
-| `mobile/lib/companion/companion_overlay_app.dart` | Root widget of the overlay engine. Runs the enter, tap, and swipe-to-exit behavior and classifies swipes. |
-| `mobile/lib/companion/companion_window.dart` | Overlay-side channel to read the window layout, move the window, show an alert, and close it. |
+| `mobile/lib/companion/companion_overlay_app.dart` | Root widget of the overlay engine. Turns taps, swipes, and holds into inputs for the action controller. |
+| `mobile/lib/companion/companion_actions.dart` | Inputs, the action type, the context an action runs with, and the controller that runs one action at a time. |
+| `mobile/lib/companion/companion_test_actions.dart` | The entrance and the six test actions, and the map from inputs to actions. |
+| `mobile/lib/companion/companion_animator.dart` | Decides which animation plays: state, facing, mood, and the bounce, backflip, and inflate clips. |
 | `mobile/lib/companion/companion_movement.dart` | Moves the window horizontally at a set speed. Knows nothing about animation. |
-| `mobile/lib/companion/companion_character.dart` | Draws the character and animates idle bobbing, blinking, walking, and the tap reaction from the current state and facing. |
-| `mobile/lib/companion/companion_state.dart` | Companion states (`hidden`, `entering`, `idle`, `walking`, `reacting`, `exiting`) and facing direction. |
-| `mobile/android/app/src/main/kotlin/com/ixland/ixland_mobile/CompanionOverlayService.kt` | Owns the overlay window and the second Flutter engine that renders the character. |
+| `mobile/lib/companion/companion_character.dart` | Draws the character from the animator and adds the idle bobbing, walking sway, and blinking. |
+| `mobile/lib/companion/companion_window.dart` | Overlay-side channel to read the window layout, move or resize the window, play the inflating sound, show an alert, and close it. |
+| `mobile/lib/companion/companion_state.dart` | Companion states (`hidden`, `entering`, `idle`, `walking`, `reacting`, `exiting`), facing, and mood. |
+| `mobile/android/app/src/main/kotlin/com/ixland/ixland_mobile/CompanionOverlayService.kt` | Owns the overlay window, the second Flutter engine that renders the character, and the generated sound. |
 | `mobile/android/app/src/main/kotlin/com/ixland/ixland_mobile/CompanionBridge.kt` | `ixland/companion` channel for the main app, including the overlay settings flow. |
+
+### Add a companion action
+
+An action is an async function that takes a `CompanionActionContext`. Use the context to call app code and drive the character: `animator` for animations, state, and mood, `movement` to walk the window, `window` for alerts and sound, `withRoom` to grow the window while the action runs, and `close` to remove the companion. A hold action can wait on `released` to learn when the finger lifts. Register the function for an input in `testCompanionActions`, or pass another map to `CompanionOverlayApp`. When an action finishes, the controller returns the companion to `idle` unless the action closed it.
+
+```dart
+Future<void> wave(CompanionActionContext context) async {
+  context.animator.state = CompanionState.reacting;
+  await context.animator.bounce();
+}
+```
 
 ### Overlay decisions
 
 - The overlay uses a native window instead of an overlay plugin, so the app controls its size, flags, and lifecycle with no new dependency. `CompanionOverlayService` adds a 96 dp `TYPE_APPLICATION_OVERLAY` window that is never focusable, so touches outside it reach the app underneath. Android requires the user to grant **Display over other apps**, which the app checks with `Settings.canDrawOverlays`. [Overlay window type](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#TYPE_APPLICATION_OVERLAY) · [Overlay permission](https://developer.android.com/reference/android/provider/Settings#ACTION_MANAGE_OVERLAY_PERMISSION)
 - The window runs a second Flutter engine that starts at `companionOverlayMain` in `main.dart`. The entry point has to stay in that library so Android can find it. The engine renders with a transparent texture and doesn't register plugins. Dart decides where the character goes and calls the service to move the window, so the character's look and behavior stay in Flutter.
-- Movement and animation are separate. `CompanionMovementController` only sets the window position. `CompanionCharacter` picks its animation from `CompanionState` and the facing direction. The placeholder painter draws from a normalized `CompanionPose`, so a sprite sheet or Rive renderer can replace it without changing the controllers. Animations stop while the companion is hidden.
-- Transparent pixels inside the 96 dp window still receive touches, so the window is kept small. Horizontal positions may go off screen so the character can walk out. Vertical positions are clamped to the area outside system bars and display cutouts. After rotation or a display change, the window is moved back on screen. Before Android 11, the clamp uses the full display size and doesn't account for cutouts.
+- Movement and animation are separate. `CompanionMovementController` only sets the window position. `CompanionAnimator` decides which animation plays, and `CompanionCharacter` draws it. The placeholder painter draws from a normalized `CompanionPose`, so a sprite sheet or Rive renderer can replace it without changing actions or controllers. Animations stop while the companion is hidden.
+- Transparent pixels inside the window still receive touches, so the window stays at 96 dp. The backflip and the hold action grow it with `withRoom` only while they run, upward from its bottom center, and the character keeps a fixed size so it doesn't jump when the window changes. The 96 dp size is set in both `companion_actions.dart` and `CompanionOverlayService.kt`.
+- Horizontal positions may go off screen so the character can walk out. Vertical positions are clamped to the area outside system bars and display cutouts. After rotation or a display change, the window is moved back on screen. Before Android 11, the clamp uses the full display size and doesn't account for cutouts.
+- Swipes use the larger axis of the fling velocity, or of the drag distance for a slow drag. Holding still for Flutter's long-press delay starts the hold action.
+- The inflating sound is generated in the service as rushing air under a rising tone and played with `AudioTrack`, so no audio package or sound file is needed. It plays as a sonification sound, stops when the character reaches its limit or the finger lifts, and is skipped if audio can't start. [AudioTrack](https://developer.android.com/reference/android/media/AudioTrack)
 - The **Hello world** alert is a system dialog shown as an overlay window. It stands in for opening the chat, which doesn't exist yet.
 - The service is started while IXLand is in the foreground. It isn't a foreground service and shows no notification. Android can still stop the process in the background, which removes the companion. Appearances triggered later in the background will need a supported path, such as a notification the user taps or a foreground service with a matching type. [Background service limits](https://developer.android.com/about/versions/oreo/background#services) · [Foreground service types](https://developer.android.com/develop/background-work/services/fg-service-types)
 - Settings, AI-triggered appearances, a policy for when the companion may appear, and handling for access being revoked while it's visible aren't implemented yet.
@@ -124,8 +151,8 @@ flutter test
 flutter run
 ```
 
-`test/companion_test.dart` covers swipe classification, the TEST button with granted and denied access, and the overlay walking in, sending **Hello world** on tap, and walking off and closing after a swipe, with the window channel mocked.
+`test/companion_test.dart` covers swipe classification in all four directions, the one-action-at-a-time rule, and the TEST button with granted and denied access. It also covers each test action with the window channel mocked: the alert on tap, walking off and closing on side swipes, the backflip's temporary resize, inputs blocked while sad, and the hold's sound, resize, and release. Inputs after closing are ignored.
 
-On a physical Android phone, tap **TEST**, grant access, and check that the companion walks in over the home screen. Open another app and confirm you can tap and scroll around the character. Tap the companion for the alert, then swipe it away in each direction. Rotate the phone while it's visible and check it stays on screen.
+On a physical Android phone, tap **TEST**, grant access, and check that the companion walks in over the home screen. Open another app and confirm you can tap and scroll around the character. Try each input from the table, and check that other inputs do nothing while an action runs, especially during the two sad seconds. Hold with the phone's sound on to hear the inflating sound. Check the backflip and inflation aren't clipped and the character doesn't jump when the window resizes. Rotate the phone while it's visible and check it stays on screen.
 
-Flutter analysis and all 15 tests passed, and the debug APK built. The companion hasn't been run on a device yet.
+Flutter analysis and all 20 tests passed, and the debug APK built. The companion hasn't been run on a device yet.

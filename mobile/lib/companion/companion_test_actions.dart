@@ -1,0 +1,96 @@
+import 'dart:async';
+import 'dart:ui';
+
+import 'companion_actions.dart';
+import 'companion_animator.dart';
+import 'companion_character.dart';
+import 'companion_state.dart';
+
+/// Test actions for the six companion inputs.
+///
+/// Replace these with real behavior by mapping an input to another
+/// [CompanionAction].
+Map<CompanionInput, CompanionAction> testCompanionActions() => {
+  CompanionInput.tap: sayHello,
+  CompanionInput.swipeLeft: (context) => leave(context, toLeft: true),
+  CompanionInput.swipeRight: (context) => leave(context, toLeft: false),
+  CompanionInput.swipeUp: backflip,
+  CompanionInput.swipeDown: beSad,
+  CompanionInput.hold: inflate,
+};
+
+/// Walks in from the right edge to its resting spot.
+Future<void> enterFromRight(CompanionActionContext context) async {
+  context.animator
+    ..facing = CompanionFacing.left
+    ..state = CompanionState.entering;
+  await context.movement.walkTo(context.movement.restX);
+}
+
+/// Bounces once and shows a Hello world alert.
+Future<void> sayHello(CompanionActionContext context) async {
+  context.animator.state = CompanionState.reacting;
+  await Future.wait([
+    context.animator.bounce(),
+    context.window.showAlert(title: 'IXLand', message: 'Hello world'),
+  ]);
+}
+
+/// Runs off the left or right edge and closes the companion.
+Future<void> leave(
+  CompanionActionContext context, {
+  required bool toLeft,
+}) async {
+  context.animator
+    ..facing = toLeft ? CompanionFacing.left : CompanionFacing.right
+    ..state = CompanionState.exiting;
+  await context.movement.walkTo(
+    context.movement.offscreenX(left: toLeft),
+    speed: context.movement.speed * 4,
+  );
+  await context.close();
+}
+
+/// Jumps and spins backwards once.
+Future<void> backflip(CompanionActionContext context) async {
+  context.animator.state = CompanionState.reacting;
+  await context.withRoom(
+    Size(
+      companionWindowSize.width,
+      companionWindowSize.height + CompanionPainter.jumpHeight + 8,
+    ),
+    context.animator.backflip,
+  );
+}
+
+/// Looks sad for two seconds. Other inputs are ignored meanwhile.
+Future<void> beSad(CompanionActionContext context) async {
+  await context.animator.setMood(CompanionMood.sad);
+  await Future<void>.delayed(const Duration(seconds: 2));
+  await context.animator.setMood(CompanionMood.normal);
+}
+
+/// How large the hold action lets the character grow.
+const inflateLimit = 1.8;
+
+/// How long it takes to grow to [inflateLimit].
+const inflateDuration = Duration(seconds: 2);
+
+/// Grows with an inflating sound while held, up to [inflateLimit], and
+/// shrinks back when released.
+Future<void> inflate(CompanionActionContext context) async {
+  assert(inflateLimit <= CompanionAnimator.maxScale);
+  final side = CompanionPainter.bodyRadius * 2 * inflateLimit + 28;
+  await context.withRoom(Size(side, side), () async {
+    context.animator.state = CompanionState.reacting;
+    unawaited(context.window.playInflateSound(inflateDuration));
+    // Stop the sound when the limit is reached or the finger lifts.
+    await Future.any([
+      context.animator.inflateTo(inflateLimit, inflateDuration),
+      context.released,
+    ]);
+    unawaited(context.window.stopSound());
+    await context.released;
+    await context.animator.deflate();
+  });
+}

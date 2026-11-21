@@ -2,57 +2,66 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
+import 'companion_actions.dart';
+import 'companion_animator.dart';
 import 'companion_character.dart';
 import 'companion_movement.dart';
-import 'companion_state.dart';
+import 'companion_test_actions.dart';
 import 'companion_window.dart';
 
-enum SwipeDirection { left, right }
-
-/// Classifies the end of a horizontal drag as a dismiss swipe, or null for a
-/// small drag that should snap back. [distance] is in logical pixels and
-/// [velocity] in logical pixels per second.
-SwipeDirection? classifySwipe({
-  required double distance,
-  required double velocity,
+/// Classifies the end of a drag as a swipe input, or null for a small drag
+/// that should snap back. The larger axis decides the direction. [distance] is
+/// in logical pixels and [velocity] in logical pixels per second.
+CompanionInput? classifySwipe({
+  required Offset distance,
+  required Offset velocity,
 }) {
   const minVelocity = 400.0;
   const minDistance = 32.0;
-  if (velocity.abs() >= minVelocity) {
-    return velocity < 0 ? SwipeDirection.left : SwipeDirection.right;
+  final Offset vector;
+  if (velocity.distance >= minVelocity) {
+    vector = velocity;
+  } else if (distance.distance >= minDistance) {
+    vector = distance;
+  } else {
+    return null;
   }
-  if (distance.abs() >= minDistance) {
-    return distance < 0 ? SwipeDirection.left : SwipeDirection.right;
+  if (vector.dx.abs() >= vector.dy.abs()) {
+    return vector.dx < 0 ? CompanionInput.swipeLeft : CompanionInput.swipeRight;
   }
-  return null;
+  return vector.dy < 0 ? CompanionInput.swipeUp : CompanionInput.swipeDown;
 }
 
-/// Root widget of the overlay engine. It runs inside the small native window
-/// and decides when the companion enters, reacts, and leaves.
+/// Root widget of the overlay engine. It turns gestures into
+/// [CompanionInput]s for the action controller.
 class CompanionOverlayApp extends StatefulWidget {
-  const CompanionOverlayApp({super.key, this.window});
+  const CompanionOverlayApp({super.key, this.window, this.actions});
 
   final CompanionWindow? window;
+
+  /// Defaults to [testCompanionActions].
+  final Map<CompanionInput, CompanionAction>? actions;
 
   @override
   State<CompanionOverlayApp> createState() => _CompanionOverlayAppState();
 }
 
 class _CompanionOverlayAppState extends State<CompanionOverlayApp>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final _window = widget.window ?? CompanionWindow();
+  late final _animator = CompanionAnimator(vsync: this);
   CompanionMovementController? _movement;
-  var _state = CompanionState.hidden;
-  var _facing = CompanionFacing.left;
-  double _dragDistance = 0;
+  CompanionActionController? _actions;
+  Completer<void>? _hold;
+  Offset _drag = Offset.zero;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_enter());
+    unawaited(_start());
   }
 
-  Future<void> _enter() async {
+  Future<void> _start() async {
     final layout = await _window.getLayout();
     if (!mounted) return;
     final movement = _movement = CompanionMovementController(
@@ -61,64 +70,52 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
       vsync: this,
     );
     _window.onLayoutChanged(movement.updateLayout);
-    setState(() {
-      _state = CompanionState.entering;
-      _facing = CompanionFacing.left;
-    });
-    await movement.walkTo(movement.restX);
-    if (mounted && _state == CompanionState.entering) {
-      setState(() => _state = CompanionState.idle);
+    final actions = _actions = CompanionActionController(
+      actions: widget.actions ?? testCompanionActions(),
+      animator: _animator,
+      movement: movement,
+      window: _window,
+    );
+    actions.run(enterFromRight);
+  }
+
+  bool _accepts() {
+    final actions = _actions;
+    return actions != null && !actions.isBusy && !actions.isClosed;
+  }
+
+  void _onPanUpdate(DragUpdateDetails details) {
+    if (!_accepts()) return;
+    setState(() => _drag += details.delta);
+  }
+
+  void _onPanEnd(DragEndDetails details) {
+    final input = classifySwipe(
+      distance: _drag,
+      velocity: details.velocity.pixelsPerSecond,
+    );
+    setState(() => _drag = Offset.zero);
+    if (input != null) _actions?.handle(input);
+  }
+
+  void _onHoldStart(LongPressStartDetails details) {
+    final hold = _hold = Completer<void>();
+    if (_actions?.handle(CompanionInput.hold, released: hold.future) != true) {
+      _endHold();
     }
   }
 
-  Future<void> _onTap() async {
-    if (_state != CompanionState.idle) return;
-    setState(() => _state = CompanionState.reacting);
-    await _window.showAlert(title: 'IXLand', message: 'Hello world');
-    await Future<void>.delayed(const Duration(milliseconds: 320));
-    if (mounted && _state == CompanionState.reacting) {
-      setState(() => _state = CompanionState.idle);
-    }
-  }
-
-  void _onDragUpdate(DragUpdateDetails details) {
-    if (!_acceptsGestures) return;
-    setState(() => _dragDistance += details.delta.dx);
-  }
-
-  void _onDragEnd(DragEndDetails details) {
-    if (!_acceptsGestures) return;
-    final direction = classifySwipe(
-      distance: _dragDistance,
-      velocity: details.primaryVelocity ?? 0,
-    );
-    setState(() => _dragDistance = 0);
-    if (direction != null) unawaited(_exit(direction));
-  }
-
-  bool get _acceptsGestures =>
-      _state != CompanionState.hidden && _state != CompanionState.exiting;
-
-  Future<void> _exit(SwipeDirection direction) async {
-    final movement = _movement;
-    if (movement == null) return;
-    final left = direction == SwipeDirection.left;
-    setState(() {
-      _state = CompanionState.exiting;
-      _facing = left ? CompanionFacing.left : CompanionFacing.right;
-    });
-    await movement.walkTo(
-      movement.offscreenX(left: left),
-      speed: movement.speed * 4,
-    );
-    if (!mounted) return;
-    setState(() => _state = CompanionState.hidden);
-    await _window.close();
+  void _endHold() {
+    final hold = _hold;
+    _hold = null;
+    if (hold != null && !hold.isCompleted) hold.complete();
   }
 
   @override
   void dispose() {
+    _endHold();
     _movement?.dispose();
+    _animator.dispose();
     super.dispose();
   }
 
@@ -128,16 +125,23 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
       textDirection: TextDirection.ltr,
       child: Semantics(
         button: true,
-        label: 'IXLand companion. Tap to talk. Swipe sideways to dismiss.',
+        label:
+            'IXLand companion. Tap, hold, or swipe in any direction to interact.',
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: _onTap,
-          onHorizontalDragUpdate: _onDragUpdate,
-          onHorizontalDragEnd: _onDragEnd,
+          onTap: () => _actions?.handle(CompanionInput.tap),
+          onPanUpdate: _onPanUpdate,
+          onPanEnd: _onPanEnd,
+          onLongPressStart: _onHoldStart,
+          onLongPressEnd: (_) => _endHold(),
+          onLongPressCancel: _endHold,
           child: Transform.translate(
             // Follow the finger a little inside the window as drag feedback.
-            offset: Offset(_dragDistance.clamp(-16.0, 16.0), 0),
-            child: CompanionCharacter(state: _state, facing: _facing),
+            offset: Offset(
+              _drag.dx.clamp(-16.0, 16.0),
+              _drag.dy.clamp(-16.0, 16.0),
+            ),
+            child: CompanionCharacter(animator: _animator),
           ),
         ),
       ),

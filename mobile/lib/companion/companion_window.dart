@@ -65,6 +65,24 @@ class CompanionWindow {
   Future<void> moveTo(double x, double y) =>
       _channel.invokeMethod<void>('moveTo', {'x': x.round(), 'y': y.round()});
 
+  /// Resizes the window to [size] in logical pixels, keeping its bottom center
+  /// in place. Returns the new layout.
+  Future<CompanionWindowLayout> resize(Size size) async {
+    final map = await _channel.invokeMapMethod<Object?, Object?>('resize', {
+      'width': size.width,
+      'height': size.height,
+    });
+    return CompanionWindowLayout.fromMap(map ?? const {});
+  }
+
+  /// Plays a rising inflating sound for [duration].
+  Future<void> playInflateSound(Duration duration) =>
+      _channel.invokeMethod<void>('playInflateSound', {
+        'durationMs': duration.inMilliseconds,
+      });
+
+  Future<void> stopSound() => _channel.invokeMethod<void>('stopSound');
+
   Future<void> showAlert({required String title, required String message}) =>
       _channel.invokeMethod<void>('showAlert', {
         'title': title,

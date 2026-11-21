@@ -4,6 +4,9 @@ import android.app.AlertDialog
 import android.app.Service
 import android.content.Intent
 import android.content.res.Configuration
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Build
@@ -21,7 +24,10 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import kotlin.math.PI
+import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /**
  * Hosts the companion in a small system overlay window.
@@ -38,6 +44,7 @@ class CompanionOverlayService : Service() {
     private var params: WindowManager.LayoutParams? = null
     private var channel: MethodChannel? = null
     private var dialog: AlertDialog? = null
+    private var sound: AudioTrack? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -106,6 +113,36 @@ class CompanionOverlayService : Service() {
                 windowManager.updateViewLayout(view, params)
                 result.success(null)
             }
+            "resize" -> {
+                val params = params
+                val view = view
+                if (params == null || view == null) {
+                    result.success(layout())
+                    return
+                }
+                val density = resources.displayMetrics.density
+                val width = ((call.argument<Number>("width")?.toDouble() ?: WINDOW_SIZE_DP.toDouble()) * density)
+                    .roundToInt()
+                val height = ((call.argument<Number>("height")?.toDouble() ?: WINDOW_SIZE_DP.toDouble()) * density)
+                    .roundToInt()
+                // Keep the bottom center in place so the character doesn't jump.
+                val screen = screenBounds()
+                params.x += (params.width - width) / 2
+                params.y = (params.y + params.height - height)
+                    .coerceIn(screen.top, maxOf(screen.top, screen.bottom - height))
+                params.width = width
+                params.height = height
+                windowManager.updateViewLayout(view, params)
+                result.success(layout())
+            }
+            "playInflateSound" -> {
+                playInflateSound(call.argument<Number>("durationMs")?.toInt() ?: 2000)
+                result.success(null)
+            }
+            "stopSound" -> {
+                stopSound()
+                result.success(null)
+            }
             "showAlert" -> {
                 showAlert(
                     call.argument<String>("title") ?: "",
@@ -136,6 +173,62 @@ class CompanionOverlayService : Service() {
             }
     }
 
+    /** Plays a generated balloon sound: rushing air under a rising tone. */
+    private fun playInflateSound(durationMs: Int) {
+        stopSound()
+        val count = SAMPLE_RATE * durationMs.coerceIn(100, 10_000) / 1000
+        val samples = ShortArray(count)
+        val noise = java.util.Random(7)
+        var phase = 0.0
+        var air = 0.0
+        for (i in 0 until count) {
+            val t = i.toDouble() / count
+            phase += 2 * PI * (160 + 560 * t * t) / SAMPLE_RATE
+            // Low-pass filtered noise sounds like air rather than static.
+            air += ((noise.nextDouble() * 2 - 1) - air) * 0.18
+            val tone = sin(phase) * 0.35 + sin(phase * 2) * 0.1
+            val fade = min(1.0, t * 25) * min(1.0, (1 - t) * 25)
+            samples[i] = ((tone + air * 0.9) * fade * 0.5 * Short.MAX_VALUE).toInt().toShort()
+        }
+        sound = try {
+            AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build(),
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(SAMPLE_RATE)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build(),
+                )
+                .setTransferMode(AudioTrack.MODE_STATIC)
+                .setBufferSizeInBytes(count * 2)
+                .build()
+                .also {
+                    it.write(samples, 0, count)
+                    it.play()
+                }
+        } catch (_: Exception) {
+            // Sound is decoration. The animation still runs without it.
+            null
+        }
+    }
+
+    private fun stopSound() {
+        sound?.let {
+            try {
+                it.stop()
+            } catch (_: IllegalStateException) {
+            }
+            it.release()
+        }
+        sound = null
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         val params = params ?: return
@@ -149,6 +242,7 @@ class CompanionOverlayService : Service() {
     }
 
     override fun onDestroy() {
+        stopSound()
         dialog?.dismiss()
         dialog = null
         channel?.setMethodCallHandler(null)
@@ -200,6 +294,8 @@ class CompanionOverlayService : Service() {
     companion object {
         const val WINDOW_CHANNEL = "ixland/companion/window"
         private const val ENTRY_POINT = "companionOverlayMain"
+        /** Must match `companionWindowSize` in `companion_actions.dart`. */
         private const val WINDOW_SIZE_DP = 96
+        private const val SAMPLE_RATE = 22_050
     }
 }
