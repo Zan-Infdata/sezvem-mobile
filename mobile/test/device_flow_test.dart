@@ -144,6 +144,10 @@ void main() {
     expect(api.posts, [payload]);
     expect(payload['patient_id'], 'fixture-patient');
     expect(payload['hr'], [72, 73]);
+    expect(payload['sample_timestamps'], [
+      start.add(const Duration(milliseconds: 100)).toIso8601String(),
+      start.add(const Duration(milliseconds: 200)).toIso8601String(),
+    ]);
     expect(payload['extra'], {'batch_interval_in_seconds': interval.inSeconds});
     expect(find.text('Samples in batch: 0'), findsOneWidget);
 
@@ -168,6 +172,10 @@ void main() {
     final extended = previewPayload();
     expect(extended['batch_number'], rejected['batch_number']);
     expect(extended['hr'], [74, 75]);
+    expect(extended['sample_timestamps'], [
+      start.add(interval).toIso8601String(),
+      start.add(interval * 2).toIso8601String(),
+    ]);
     expect(extended['extra'], {
       'batch_interval_in_seconds': interval.inSeconds * 2,
     });
@@ -213,7 +221,8 @@ void main() {
 }
 
 class _TestTelemetryApi extends TelemetryApi {
-  _TestTelemetryApi() : super(url: 'https://example.test/batches');
+  _TestTelemetryApi()
+    : super(url: 'https://example.test/batches', includeSampleTimestamps: true);
 
   final posts = <Map<String, Object?>>[];
 

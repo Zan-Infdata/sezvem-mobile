@@ -12,6 +12,8 @@ Configure the full POST endpoint with `BATCH_API_URL` and set the patient ID in 
 
 **Create patient** posts a name to `POST /patients` and uses the server-assigned `patient_id` from the HTTP 201 response for new readings. See [patient creation setup](mobile-implementation.md#create-a-patient-through-the-api).
 
+The mobile app supports `sample_timestamps` as a top-level array of UTC ISO 8601 strings. Entry `i` is the phone's receipt time for `hr[i]`. A batch with no heart-rate entries uses an empty array. Enable the field with `BATCH_SEND_SAMPLE_TIMESTAMPS=true` when the backend supports it. See [sample timestamp verification](mobile-implementation.md#heart-rate-sample-timestamps).
+
 ## Wearable metric upload
 
 Send one JSON object per batch over an authenticated HTTPS POST. Use `POST /v1/metric-batches` as the proposed route and `Content-Type: application/json`. All ten fields are required. Send both sleep fields as JSON `null` for regular batches. [JSON format](https://www.rfc-editor.org/rfc/rfc8259.html)

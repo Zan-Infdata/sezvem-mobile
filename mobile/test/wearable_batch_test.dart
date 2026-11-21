@@ -79,6 +79,10 @@ void main() {
         'batch_timestamp': start.toIso8601String(),
         'b_number': attempts.first['b_number'],
         'hr': [72, 75],
+        'sample_timestamps': [
+          start.add(const Duration(minutes: 1)).toIso8601String(),
+          start.add(const Duration(minutes: 6)).toIso8601String(),
+        ],
         'sleep_start': null,
         'sleep_end': null,
         'temperature': [],
@@ -144,6 +148,9 @@ void main() {
     await accept(10);
     expect(attempts.last, same(attempts.first));
     expect(attempts.last['hr'], [70]);
+    expect(attempts.last['sample_timestamps'], [
+      start.add(const Duration(minutes: 1)).toIso8601String(),
+    ]);
     expect(
       buffer.pendingSampleCount(providerId: 'samsung', deviceId: 'watch'),
       2,
@@ -151,6 +158,10 @@ void main() {
 
     await accept(15);
     expect(attempts.last['hr'], [71, 73]);
+    expect(attempts.last['sample_timestamps'], [
+      start.add(const Duration(minutes: 4)).toIso8601String(),
+      start.add(const Duration(minutes: 6)).toIso8601String(),
+    ]);
     expect(attempts.last['b_number'], 2);
   });
 
@@ -215,6 +226,7 @@ void main() {
           expect(payload['steps'], 0);
           expect(payload['temperature'], [34.1, 34.2]);
           expect(payload['hr'], isEmpty);
+          expect(payload['sample_timestamps'], isEmpty);
           return true;
         },
       );
