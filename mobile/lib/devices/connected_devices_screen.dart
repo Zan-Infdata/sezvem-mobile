@@ -39,6 +39,7 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
   HeartRateSample? _latest;
   String? _error;
   String? _batchJson;
+  bool _debugJam = false;
   late final _companionWander = CompanionWanderTest(
     companion: widget.companion,
   );
@@ -75,7 +76,7 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
     if (!mounted) return false;
     final json = const JsonEncoder.withIndent('  ').convert(payload);
     setState(() => _batchJson = json);
-    return true;
+    return !_debugJam;
   }
 
   Future<void> _addDevice() async {
@@ -224,19 +225,34 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
                     ),
                     subtitle: Text('Samples in batch: $pendingSamples'),
                   ),
-                if (batchJson != null)
+                if (batchJson != null) ...[
                   ExpansionTile(
                     title: const Text('Batch JSON (debug)'),
                     initiallyExpanded: true,
                     childrenPadding: const EdgeInsets.all(16),
                     expandedAlignment: Alignment.centerLeft,
                     children: [
-                      SelectableText(
-                        batchJson,
-                        style: const TextStyle(fontFamily: 'monospace'),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 240),
+                        child: SingleChildScrollView(
+                          primary: false,
+                          child: SelectableText(
+                            batchJson,
+                            style: const TextStyle(fontFamily: 'monospace'),
+                          ),
+                        ),
                       ),
                     ],
                   ),
+                  CheckboxListTile(
+                    title: const Text('Debug jam'),
+                    subtitle: const Text('Simulate an unavailable API'),
+                    value: _debugJam,
+                    onChanged: (value) {
+                      setState(() => _debugJam = value ?? false);
+                    },
+                  ),
+                ],
               ],
             ),
       floatingActionButton: Column(

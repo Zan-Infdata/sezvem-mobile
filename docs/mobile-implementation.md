@@ -41,7 +41,7 @@ Use plain Material widgets and Flutter navigation. Android is the first scaffold
 - Discover WHOOP 4.0 by its vendor service or advertised name. After a device is selected and its services are discovered, send an acknowledged battery query on the protected WHOOP 4.0 command characteristic. Noop uses this write to initiate bonding where Android requires it. An acknowledged write means the GATT operation completed. Treat a valid reading as the evidence that heart-rate streaming works. [Noop Android pairing implementation](https://github.com/ryanbr/noop/blob/main/android/app/src/main/java/com/noop/ble/WhoopBleClient.kt#L9690-L9712) · [Noop WHOOP 4 profile](https://github.com/ryanbr/noop/blob/main/docs/PROTOCOL_WHOOP4.md#bond-handshake--connect-lifecycle-whoop-40)
 - Request the WHOOP 4.0 live heart-rate stream and re-arm it while connected. When available, also listen to the standard Bluetooth Heart Rate Service `0x180D` and characteristic `0x2A37`. Use one source at a time to avoid counting both streams. Heart Rate Broadcast, enabled separately, also works through that standard path. Support for the vendor live-stream command varies by firmware. [Noop command notes](https://github.com/ryanbr/noop/blob/main/docs/PROTOCOL_COMMANDS.md#whoop-4) · [Bluetooth Heart Rate Service](https://www.bluetooth.com/wp-content/uploads/Files/Specification/HTML/HRS_v1.0/out/en/index-en.html)
 - All provider-specific commands and parsers stay in the adapter directory. The adapter emits integer BPM and the phone's UTC receipt time. The WHOOP 4.0 parser accepts complete checksum-verified live heart-rate frames. The standard parser reads 8-bit and 16-bit BPM values and skips measurements with an explicit no-contact flag. Both paths skip missing or zero BPM. The current BLE dependency is `flutter_reactive_ble` 5.4.2. [Noop sensor records](https://github.com/ryanbr/noop/blob/main/docs/PROTOCOL_SENSORS.md#whoop-4-realtime-heart-rate-record-type-40) · [Flutter Reactive BLE](https://pub.dev/packages/flutter_reactive_ble/versions/5.4.2)
-- Group readings by UTC receipt time into fixed-length windows. `BATCH_UPLOAD_INTERVAL_MINUTES` is a Dart build-time setting for the prototype window length. It defaults to five minutes. See [Timed batch preview and retries](#timed-batch-preview-and-retries) for retention and upload timing.
+- Group readings by UTC receipt time into fixed-length windows. The prototype window defaults to 60 seconds. See [Batch interval configuration](#batch-interval-configuration) for build-time overrides.
 - The Bluetooth path currently collects heart rate. The POST contract requires additional fields such as `steps` and `spo2` and needs an agreed missing-data policy. Durable storage and POST submission are future steps.
 
 ## Galaxy Watch4 companion
@@ -70,7 +70,7 @@ Use a physical Android phone and a WHOOP 4.0 to verify direct pairing. Start wit
 ```sh
 cd mobile
 flutter pub get
-flutter run --dart-define=BATCH_UPLOAD_INTERVAL_MINUTES=5
+flutter run --dart-define=BATCH_UPLOAD_INTERVAL_SECONDS=60
 ```
 
 From `mobile/`, run the analyzer and widget tests.
@@ -87,13 +87,23 @@ Flutter analysis and all nine tests passed. Both debug APKs built with matching 
 
 ## Timed batch preview and retries
 
-Connected Devices attempts to send completed UTC windows on the configured `BATCH_UPLOAD_INTERVAL_MINUTES` cadence. The buffer groups readings by provider and device, keeps pending samples after disconnect, and removes only the samples acknowledged by the sender. Pending data and batch numbers live in memory for the current app session.
+Connected Devices attempts to send completed UTC windows on the configured batch cadence. The buffer groups readings by provider and device, keeps pending samples after disconnect, and removes only the samples acknowledged by the sender. Pending data and batch numbers live in memory for the current app session.
 
-`_ConnectedDevicesScreenState._sendBatch` is the temporary sender. It displays the latest attempted object under **Batch JSON (debug)** and returns `true` to simulate acceptance. A future HTTP sender should return `true` after confirmed acceptance, return `false` for confirmed non-acceptance, and throw when delivery is uncertain. After a `false` result, the next attempt includes newly completed windows for that device and extends the interval from the original start. A lost response retries the original payload unchanged while additional readings continue to buffer.
+`_ConnectedDevicesScreenState._sendBatch` is the temporary sender. It displays the latest attempted object under **Batch JSON (debug)** and simulates acceptance by default. A future HTTP sender should return `true` after confirmed acceptance, return `false` for confirmed non-acceptance, and throw when delivery is uncertain. After a `false` result, the next attempt includes newly completed windows for that device and extends the interval from the original start. A lost response retries the original payload unchanged while additional readings continue to buffer.
 
 The preview shows `null` for `patient_id` and `steps` until sign-in supplies a patient ID and the adapter supplies a step count. It uses an empty temperature array and `null` for `spo2`, `sleep_start`, and `sleep_end`. The staging payload still needs a patient ID and an agreed step count or missing-data policy.
 
-To verify on a phone, run `flutter run --dart-define=BATCH_UPLOAD_INTERVAL_MINUTES=1` from `mobile/`. Connect a wearable and collect heart-rate samples. At the next UTC minute boundary, check that the JSON contains the readings and a 60-second interval and that the pending sample count drops for the accepted readings. `flutter test` covers the preview and simulates confirmed rejection and a lost response.
+`flutter test` covers the preview and simulates confirmed rejection and a lost response.
+
+## Batch interval configuration
+
+Set a positive whole number with `BATCH_UPLOAD_INTERVAL_SECONDS`. The app defaults to 60 seconds if the value is absent or invalid. Rerun the app after changing the build-time setting.
+
+From `mobile/`, run `flutter run --dart-define=BATCH_UPLOAD_INTERVAL_SECONDS=10` and connect a wearable. When the next 10-second window closes, check that **Batch JSON (debug)** shows `batch_interval_in_seconds` of 10 and the pending sample count drops for the accepted readings. The widget test also verifies the override with `flutter test --dart-define=BATCH_UPLOAD_INTERVAL_SECONDS=10 test/device_flow_test.dart`.
+
+## Debug jam
+
+After the first JSON preview appears, check **Debug jam** below it to simulate an API that receives no batches. The preview updates on each attempt, while the debug sender returns `false` so the buffer retains the readings. Keep the wearable streaming through two windows and check that the pending sample count grows and the attempted payload spans both windows. Uncheck **Debug jam** to let the next scheduled attempt clear the readings it accepts. The Connected Devices widget test exercises this flow with synthetic heart-rate readings.
 
 ## Companion overlay test
 

@@ -47,9 +47,13 @@ class LoginScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const minutes = int.fromEnvironment(
-      'BATCH_UPLOAD_INTERVAL_MINUTES',
-      defaultValue: 5,
+    const defaultSeconds = 60;
+    const seconds = int.fromEnvironment(
+      'BATCH_UPLOAD_INTERVAL_SECONDS',
+      defaultValue: defaultSeconds,
+    );
+    const batchInterval = Duration(
+      seconds: seconds > 0 ? seconds : defaultSeconds,
     );
     return Scaffold(
       appBar: AppBar(title: const Text('Sign in')),
@@ -60,9 +64,7 @@ class LoginScreen extends StatelessWidget {
               MaterialPageRoute<void>(
                 builder: (_) => ConnectedDevicesScreen(
                   adapters: adapters,
-                  batchInterval: const Duration(
-                    minutes: minutes > 0 ? minutes : 5,
-                  ),
+                  batchInterval: batchInterval,
                 ),
               ),
             );
