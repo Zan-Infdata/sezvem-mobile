@@ -13,12 +13,9 @@ final class TelemetryDeliveryUncertain implements Exception {
 }
 
 class TelemetryApi {
-  TelemetryApi({required String url, bool includeSampleTimestamps = false})
-    : _endpoint = Uri.tryParse(url),
-      _includeSampleTimestamps = includeSampleTimestamps;
+  TelemetryApi({required String url}) : _endpoint = Uri.tryParse(url);
 
   final Uri? _endpoint;
-  final bool _includeSampleTimestamps;
   final _unconfirmed = <(String, int)>{};
   static const _timeout = Duration(seconds: 10);
 
@@ -31,22 +28,20 @@ class TelemetryApi {
     final temperature = temperatures.isEmpty
         ? null
         : (total / temperatures.length * 10 - 1e-9).ceil() / 10;
-    final timestamps = _includeSampleTimestamps
-        ? batch['sample_timestamps'] as List<String>?
-        : null;
+    final timestamps = batch['sample_timestamps'] as List<String>;
     final heartRates = <int>[];
     final sampleTimestamps = <String>[];
     for (final (index, bpm) in (batch['hr'] as List<int>).indexed) {
       if (bpm < 20 || bpm > 250) continue;
       heartRates.add(bpm);
-      if (timestamps != null) sampleTimestamps.add(timestamps[index]);
+      sampleTimestamps.add(timestamps[index]);
     }
     return {
       'patient_id': batch['patient_id'],
       'batch_timestamp': batch['batch_timestamp'],
       'batch_number': batch['b_number'],
       if (heartRates.isNotEmpty) 'hr': heartRates,
-      if (timestamps != null) 'sample_timestamps': sampleTimestamps,
+      'sample_timestamps': sampleTimestamps,
       if (temperature != null) 'temperature': temperature,
       if (batch['steps'] case final int steps when steps >= 0) 'steps': steps,
       if (batch['spo2'] case final int spo2 when spo2 >= 50 && spo2 <= 100)

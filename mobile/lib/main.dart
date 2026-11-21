@@ -35,12 +35,7 @@ Future<void> main() async {
         'samsung': const SamsungWearAdapter(),
       },
       patientSettings: patientSettings,
-      telemetryApi: TelemetryApi(
-        url: batchUrl,
-        includeSampleTimestamps: const bool.fromEnvironment(
-          'BATCH_SEND_SAMPLE_TIMESTAMPS',
-        ),
-      ),
+      telemetryApi: TelemetryApi(url: batchUrl),
     ),
   );
 }

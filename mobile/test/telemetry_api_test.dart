@@ -29,7 +29,6 @@ void main() {
 
       final api = TelemetryApi(
         url: 'http://127.0.0.1:${server.port}/api/batches',
-        includeSampleTimestamps: true,
       );
       final payload = api.payloadFor({
         'patient_id': 'fixture-patient',
@@ -97,10 +96,7 @@ void main() {
   });
 
   test('maps temperatures to a rounded-up mean and sends cumulative steps', () {
-    final api = TelemetryApi(
-      url: 'https://example.test/batches',
-      includeSampleTimestamps: true,
-    );
+    final api = TelemetryApi(url: 'https://example.test/batches');
     final batch = {
       'patient_id': 'fixture-patient',
       'b_number': 1,
@@ -116,11 +112,6 @@ void main() {
     expect(payload['steps'], 0);
     expect(payload.containsKey('hr'), isFalse);
     expect(payload['sample_timestamps'], isEmpty);
-    final legacyApi = TelemetryApi(url: 'https://example.test/batches');
-    expect(
-      legacyApi.payloadFor(batch).containsKey('sample_timestamps'),
-      isFalse,
-    );
     final exact = api.payloadFor({
       ...batch,
       'temperature': [36.6, 36.6, 36.6],
