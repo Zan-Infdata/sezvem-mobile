@@ -5,6 +5,7 @@ import 'companion_animator.dart';
 import 'companion_movement.dart';
 import 'companion_state.dart';
 import 'companion_window.dart';
+import 'styles/companion_style.dart';
 
 /// The gestures the companion understands.
 enum CompanionInput { tap, swipeLeft, swipeRight, swipeUp, swipeDown, hold }
@@ -18,7 +19,7 @@ typedef CompanionAction = Future<void> Function(CompanionActionContext context);
 
 /// Normal window size in logical pixels. Must match `WINDOW_SIZE_DP` in
 /// `CompanionOverlayService.kt`.
-const companionWindowSize = Size(96, 96);
+const companionWindowSize = CompanionStyle.restSize;
 
 /// What an action can use while it runs.
 class CompanionActionContext {
@@ -111,6 +112,10 @@ class CompanionActionController {
     unawaited(_run(action, context));
     return true;
   }
+
+  /// Ignores all later inputs and stops the running action from touching the
+  /// companion when it ends. Call it before disposing the animator.
+  void dispose() => _closed = true;
 
   Future<void> _run(
     CompanionAction action,

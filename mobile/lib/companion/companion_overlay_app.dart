@@ -8,6 +8,8 @@ import 'companion_character.dart';
 import 'companion_movement.dart';
 import 'companion_test_actions.dart';
 import 'companion_window.dart';
+import 'styles/companion_style.dart';
+import 'styles/companion_styles.dart';
 
 /// Classifies the end of a drag as a swipe input, or null for a small drag
 /// that should snap back. The larger axis decides the direction. [distance] is
@@ -35,12 +37,20 @@ CompanionInput? classifySwipe({
 /// Root widget of the overlay engine. It turns gestures into
 /// [CompanionInput]s for the action controller.
 class CompanionOverlayApp extends StatefulWidget {
-  const CompanionOverlayApp({super.key, this.window, this.actions});
+  const CompanionOverlayApp({
+    super.key,
+    this.window,
+    this.actions,
+    this.styles = companionStyles,
+  });
 
   final CompanionWindow? window;
 
   /// Defaults to [testCompanionActions].
   final Map<CompanionInput, CompanionAction>? actions;
+
+  /// The styles a saved style ID can pick from.
+  final List<CompanionStyle> styles;
 
   @override
   State<CompanionOverlayApp> createState() => _CompanionOverlayAppState();
@@ -53,6 +63,7 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
   CompanionMovementController? _movement;
   CompanionActionController? _actions;
   Completer<void>? _hold;
+  late CompanionStyle _style = widget.styles.first;
   Offset _drag = Offset.zero;
 
   @override
@@ -63,7 +74,9 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
 
   Future<void> _start() async {
     final layout = await _window.getLayout();
+    final styleId = await _window.getStyleId();
     if (!mounted) return;
+    setState(() => _style = companionStyleById(styleId, widget.styles));
     final movement = _movement = CompanionMovementController(
       window: _window,
       layout: layout,
@@ -79,6 +92,10 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
       onLayoutChanged: movement.updateLayout,
       // Moves from the main app follow the same one-at-a-time rule as inputs.
       onMoveTo: (uv) => actions.run((context) => walkToUv(context, uv)),
+      onStyleChanged: (id) {
+        if (!mounted) return;
+        setState(() => _style = companionStyleById(id, widget.styles));
+      },
     );
     actions.run(enterFromRight);
   }
@@ -117,6 +134,7 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
 
   @override
   void dispose() {
+    _actions?.dispose();
     _endHold();
     _movement?.dispose();
     _animator.dispose();
@@ -145,7 +163,7 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
               _drag.dx.clamp(-16.0, 16.0),
               _drag.dy.clamp(-16.0, 16.0),
             ),
-            child: CompanionCharacter(animator: _animator),
+            child: CompanionCharacter(animator: _animator, style: _style),
           ),
         ),
       ),

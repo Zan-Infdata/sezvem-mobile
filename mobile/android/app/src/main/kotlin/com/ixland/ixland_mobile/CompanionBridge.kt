@@ -35,6 +35,17 @@ internal class CompanionBridge(private val activity: Activity, messenger: Binary
                         service.moveTo(u.coerceIn(0.0, 1.0), v.coerceIn(0.0, 1.0)) { result.success(it) }
                     }
                 }
+                "getStyle" -> result.success(CompanionPrefs.styleId(activity))
+                "setStyle" -> {
+                    val id = call.arguments as? String
+                    if (id.isNullOrBlank()) {
+                        result.error("invalid_style", "Choose a companion style.", null)
+                    } else {
+                        CompanionPrefs.setStyleId(activity, id)
+                        CompanionOverlayService.instance?.applyStyle(id)
+                        result.success(null)
+                    }
+                }
                 "minimizeApp" -> result.success(activity.moveTaskToBack(true))
                 else -> result.notImplemented()
             }

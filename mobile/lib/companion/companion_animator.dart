@@ -1,15 +1,15 @@
-import 'dart:math' as math;
-
 import 'package:flutter/animation.dart';
 import 'package:flutter/foundation.dart';
 
 import 'companion_state.dart';
+import 'styles/companion_style.dart';
 
 /// Decides which animation the character plays.
 ///
 /// Actions call its methods to play one-shot clips or change the companion's
-/// state and mood. [CompanionCharacter] reads the values it exposes. Window
-/// position is handled separately by the movement controller.
+/// state and mood. [CompanionCharacter] turns the values it exposes into a
+/// [CompanionPose] for the selected style. Window position is handled
+/// separately by the movement controller.
 class CompanionAnimator extends ChangeNotifier {
   CompanionAnimator({required TickerProvider vsync})
     : _bounce = AnimationController(
@@ -36,7 +36,7 @@ class CompanionAnimator extends ChangeNotifier {
   }
 
   /// The largest size the character can grow to, relative to its normal size.
-  static const maxScale = 2.0;
+  static const maxScale = CompanionStyle.maxInflate;
 
   final AnimationController _bounce;
   final AnimationController _flip;
@@ -59,14 +59,11 @@ class CompanionAnimator extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Squash from a bounce, 0 none to 1 fully squashed.
-  double get squash => math.sin(_bounce.value * math.pi);
+  /// Bounce progress from 0 to 1.
+  double get bounceProgress => _bounce.value;
 
-  /// Backflip rotation in radians.
-  double get flipAngle => Curves.easeInOut.transform(_flip.value) * 2 * math.pi;
-
-  /// Backflip jump height, 0 on the ground to 1 at the top.
-  double get jump => math.sin(_flip.value * math.pi);
+  /// Backflip progress from 0 to 1.
+  double get backflipProgress => _flip.value;
 
   /// Sad expression, 0 normal to 1 fully sad.
   double get sadness => _sadness.value;
@@ -77,8 +74,8 @@ class CompanionAnimator extends ChangeNotifier {
   /// A quick squash and stretch.
   Future<void> bounce() => _settle(_bounce.forward(from: 0));
 
-  /// Jumps and spins backwards once. Needs about 64 logical pixels of room
-  /// above the character.
+  /// Jumps and spins backwards once. Run it with the window at
+  /// [CompanionStyle.backflipSize].
   Future<void> backflip() => _settle(_flip.forward(from: 0));
 
   Future<void> setMood(CompanionMood mood) => switch (mood) {

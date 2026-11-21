@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../companion/companion_overlay.dart';
 import '../companion/companion_wander_test.dart';
+import '../settings/settings_screen.dart';
 import '../sync/telemetry_api.dart';
 import '../wearables/metric_batch_buffer.dart';
 import '../wearables/wearable_adapter.dart';
@@ -226,7 +227,20 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
             deviceId: device.id,
           );
     return Scaffold(
-      appBar: AppBar(title: const Text('Connected devices')),
+      appBar: AppBar(
+        title: const Text('Connected devices'),
+        actions: [
+          IconButton(
+            tooltip: 'Settings',
+            icon: const Icon(Icons.settings),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => SettingsScreen(companion: widget.companion),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: device == null && batchJson == null
           ? Center(child: Text(_error ?? 'No connected devices'))
           : ListView(

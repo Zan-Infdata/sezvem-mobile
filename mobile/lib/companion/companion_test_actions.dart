@@ -1,10 +1,7 @@
 import 'dart:async';
-import 'dart:ui';
-
 import 'companion_actions.dart';
-import 'companion_animator.dart';
-import 'companion_character.dart';
 import 'companion_state.dart';
+import 'styles/companion_style.dart';
 
 /// Test actions for the six companion inputs.
 ///
@@ -47,10 +44,7 @@ Future<void> leave(
 Future<void> backflip(CompanionActionContext context) async {
   context.animator.state = CompanionState.reacting;
   await context.withRoom(
-    Size(
-      companionWindowSize.width,
-      companionWindowSize.height + CompanionPainter.jumpHeight + 8,
-    ),
+    CompanionStyle.backflipSize,
     context.animator.backflip,
   );
 }
@@ -63,7 +57,7 @@ Future<void> beSad(CompanionActionContext context) async {
 }
 
 /// How large the hold action lets the character grow.
-const inflateLimit = 1.8;
+const inflateLimit = CompanionStyle.maxInflate;
 
 /// How long it takes to grow to [inflateLimit].
 const inflateDuration = Duration(seconds: 2);
@@ -71,9 +65,7 @@ const inflateDuration = Duration(seconds: 2);
 /// Grows with an inflating sound while held, up to [inflateLimit], and
 /// shrinks back when released.
 Future<void> inflate(CompanionActionContext context) async {
-  assert(inflateLimit <= CompanionAnimator.maxScale);
-  final side = CompanionPainter.bodyRadius * 2 * inflateLimit + 28;
-  await context.withRoom(Size(side, side), () async {
+  await context.withRoom(CompanionStyle.inflateSize, () async {
     context.animator.state = CompanionState.reacting;
     unawaited(context.window.playInflateSound(inflateDuration));
     // Stop the sound when the limit is reached or the finger lifts.

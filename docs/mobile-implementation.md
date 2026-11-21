@@ -112,7 +112,8 @@ The companion is a small animated character that appears over other Android apps
 1. On **Connected devices**, tap **TEST** below **Add device**. The first time, Android opens **Display over other apps** for IXLand. Turn it on and go back. If access stays off, the app explains why it can't continue.
 2. IXLand moves to the background. The companion walks in from the right edge and rests near the right side of the screen, over whatever app is visible. The app underneath stays usable outside the character.
 3. Interact with the companion. It runs one action at a time and ignores other input until the current action ends.
-4. While IXLand stays in the background, it controls the companion. After about a second, it brings the companion back if it isn't on screen. Then, every 4 to 8 seconds, picked uniformly, it sends the companion walking to a random spot, or brings it back if it was swiped away. Opening IXLand stops the test. A notification stays visible while the companion service runs, and its **Stop** action removes the companion.
+4. Choose the companion's look on **Connected devices** → **Settings** → **Companion style**. Each style shows an animated preview. A visible companion switches right away, and the choice is kept after a restart.
+5. While IXLand stays in the background, it controls the companion. After about a second, it brings the companion back if it isn't on screen. Then, every 4 to 8 seconds, picked uniformly, it sends the companion walking to a random spot, or brings it back if it was swiped away. Opening IXLand stops the test. A notification stays visible while the companion service runs, and its **Stop** action removes the companion.
 
 | Input | Test action |
 | --- | --- |
@@ -133,12 +134,17 @@ A short drag snaps back without triggering an action.
 | `mobile/lib/companion/companion_test_actions.dart` | The six test actions and the map from inputs to actions. |
 | `mobile/lib/companion/companion_animator.dart` | Decides which animation plays: state, facing, mood, and the bounce, backflip, and inflate clips. |
 | `mobile/lib/companion/companion_movement.dart` | Moves the window in a straight line at a set speed and converts 0 to 1 screen coordinates to window positions. Knows nothing about animation. |
-| `mobile/lib/companion/companion_character.dart` | Draws the character from the animator and adds the idle bobbing, walking sway, and blinking. |
+| `mobile/lib/companion/companion_character.dart` | Runs the idle and walk cycles and blinking, combines them with the animator into a `CompanionPose`, and has the selected style draw it. |
+| `mobile/lib/companion/styles/companion_style.dart` | The style contract: the `CompanionAnimation` list every style must show, the `CompanionPose` passed to styles, and the window sizes styles must fit. |
+| `mobile/lib/companion/styles/classic_style.dart` | The Classic style: a round teal body with two eyes, drawn on the canvas. |
+| `mobile/lib/companion/styles/companion_styles.dart` | Registry of styles in settings order. The first style is the default. |
+| `mobile/lib/settings/settings_screen.dart` | Settings screen with the companion style picker and its animated previews. |
 | `mobile/lib/companion/companion_window.dart` | Overlay-side channel to read the window layout, move or resize the window, play the inflating sound, show an alert, and close it. Also receives layout changes and move requests from the service. |
 | `mobile/lib/companion/companion_state.dart` | Companion states (`hidden`, `entering`, `idle`, `walking`, `reacting`, `exiting`), facing, and mood. |
 | `mobile/android/app/src/main/kotlin/com/ixland/ixland_mobile/CompanionOverlayService.kt` | Foreground service with a notification. Owns the overlay window, the second Flutter engine that renders the character, and the generated sound, and passes move requests to the overlay. |
 | `mobile/android/app/src/main/res/drawable/ic_companion.xml` | Notification icon. |
-| `mobile/android/app/src/main/kotlin/com/ixland/ixland_mobile/CompanionBridge.kt` | `ixland/companion` channel for the main app, including the overlay settings flow. |
+| `mobile/android/app/src/main/kotlin/com/ixland/ixland_mobile/CompanionBridge.kt` | `ixland/companion` channel for the main app, including the overlay settings flow and saving the style. |
+| `mobile/android/app/src/main/kotlin/com/ixland/ixland_mobile/CompanionPrefs.kt` | Saves the chosen style in Android `SharedPreferences`. |
 
 ### Add a companion action
 
@@ -153,6 +159,14 @@ Future<void> wave(CompanionActionContext context) async {
 }
 ```
 
+### Add a companion style
+
+A style is a `CompanionStyle` with a stable `id`, a `name` for settings, and a `paint` method that draws one frame from a `CompanionPose`. The pose holds the progress of every animation in `CompanionAnimation`: `idle`, `walk`, `blink`, `bounce`, `backflip`, `sad`, and `inflate`, plus the facing direction. Several can be active at once, so a style must combine them, for example blinking while walking and sad. The values are normalized, so a style can draw with the canvas, pick sprite sheet frames, or drive a Rive state machine. `ClassicCompanionStyle` shows one way to map each value.
+
+A style draws in logical pixels, standing at the bottom center of the overlay window. The window is `CompanionStyle.restSize` (96 by 96) most of the time and grows upward to `backflipSize` (96 by 160) or `inflateSize` (136 by 136) only during those animations, so each animation has to fit its size. Add the style to `companionStyles` to list it in settings. Never change an `id` after release, because settings save it.
+
+`test/companion_style_test.dart` checks every registered style. For each animation it draws the style at rest and with that animation active and fails if the two frames are identical. It also fails if any frame of any animation reaches the edge of its window, facing either way, and if the style doesn't turn to face both ways. To add a new animation, add it to `CompanionAnimation` with a field on `CompanionPose` and an example value. The test then fails for each style until the style draws it.
+
 ### Overlay decisions
 
 - The overlay uses a native window instead of an overlay plugin, so the app controls its size, flags, and lifecycle with no new dependency. `CompanionOverlayService` adds a 96 dp `TYPE_APPLICATION_OVERLAY` window that is never focusable, so touches outside it reach the app underneath. Android requires the user to grant **Display over other apps**, which the app checks with `Settings.canDrawOverlays`. [Overlay window type](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#TYPE_APPLICATION_OVERLAY) · [Overlay permission](https://developer.android.com/reference/android/provider/Settings#ACTION_MANAGE_OVERLAY_PERMISSION)
@@ -160,6 +174,7 @@ Future<void> wave(CompanionActionContext context) async {
 - Movement and animation are separate. `CompanionMovementController` only sets the window position. `CompanionAnimator` decides which animation plays, and `CompanionCharacter` draws it. The placeholder painter draws from a normalized `CompanionPose`, so a sprite sheet or Rive renderer can replace it without changing actions or controllers. Animations stop while the companion is hidden.
 - Transparent pixels inside the window still receive touches, so the window stays at 96 dp. The backflip and the hold action grow it with `withRoom` only while they run, upward from its bottom center, and the character keeps a fixed size so it doesn't jump when the window changes. The 96 dp size is set in both `companion_actions.dart` and `CompanionOverlayService.kt`.
 - Horizontal positions may go off screen so the character can walk out. Vertical positions are clamped to the area outside system bars and display cutouts. After rotation or a display change, the window is moved back on screen. Before Android 11, the clamp uses the full display size and doesn't account for cutouts.
+- The chosen style is saved natively in `SharedPreferences` instead of through a Flutter plugin, because the overlay engine doesn't register plugins. The main app writes it through `CompanionBridge`, and the overlay reads it on start. When the style changes while the companion is showing, the service tells the overlay to switch. Unknown or missing IDs fall back to the first style.
 - Swipes use the larger axis of the fling velocity, or of the drag distance for a slow drag. Holding still for Flutter's long-press delay starts the hold action.
 - The inflating sound is generated in the service as rushing air under a rising tone and played with `AudioTrack`, so no audio package or sound file is needed. It plays as a sonification sound, stops when the character reaches its limit or the finger lifts, and is skipped if audio can't start. [AudioTrack](https://developer.android.com/reference/android/media/AudioTrack)
 - The **Hello world** alert is a system dialog shown as an overlay window. It stands in for opening the chat, which doesn't exist yet.
@@ -178,11 +193,11 @@ flutter test
 flutter run
 ```
 
-`test/companion_test.dart` covers swipe classification in all four directions, the one-action-at-a-time rule, and the TEST button with granted and denied access. It also covers each test action with the window channel mocked: the alert on tap, walking off and closing on side swipes, the backflip's temporary resize, inputs blocked while sad, and the hold's sound, resize, and release. Inputs after closing are ignored. For app control, it covers the 0 to 1 coordinate mapping with padding and density, walking to a point the app sends, declining a move while busy, the background test bringing the companion back and moving it, uniform 4 to 8 second delays, and the test running only while the app is hidden.
+`test/companion_test.dart` covers swipe classification in all four directions, the one-action-at-a-time rule, and the TEST button with granted and denied access. It also covers each test action with the window channel mocked: the alert on tap, walking off and closing on side swipes, the backflip's temporary resize, inputs blocked while sad, and the hold's sound, resize, and release. Inputs after closing are ignored. For styles, it covers the overlay drawing the saved style and switching when it changes, and the settings picker opening from Connected devices, saving a choice, and keeping the old style when saving fails. For app control, it covers the 0 to 1 coordinate mapping with padding and density, walking to a point the app sends, declining a move while busy, the background test bringing the companion back and moving it, uniform 4 to 8 second delays, and the test running only while the app is hidden.
 
-On a physical Android phone, tap **TEST**, grant access, and check that the companion walks in over the home screen. Open another app and confirm you can tap and scroll around the character. Try each input from the table, and check that other inputs do nothing while an action runs, especially during the two sad seconds. Hold with the phone's sound on to hear the inflating sound. Check the backflip and inflation aren't clipped and the character doesn't jump when the window resizes. Rotate the phone while it's visible and check it stays on screen. Leave IXLand in the background and check that the companion walks to a new spot every 4 to 8 seconds without leaving the screen. Swipe it away and check it walks back in within 8 seconds. Open IXLand and check it stops moving. Use **Stop** in the notification and check the companion and the notification go away.
+On a physical Android phone, tap **TEST**, grant access, and check that the companion walks in over the home screen. Open another app and confirm you can tap and scroll around the character. Try each input from the table, and check that other inputs do nothing while an action runs, especially during the two sad seconds. Hold with the phone's sound on to hear the inflating sound. Check the backflip and inflation aren't clipped and the character doesn't jump when the window resizes. Rotate the phone while it's visible and check it stays on screen. Leave IXLand in the background and check that the companion walks to a new spot every 4 to 8 seconds without leaving the screen. Swipe it away and check it walks back in within 8 seconds. Open IXLand and check it stops moving. Use **Stop** in the notification and check the companion and the notification go away. Open **Settings** and check that **Classic** is selected and its preview animates.
 
-Flutter analysis and all 28 tests passed, and the debug APK built. The companion hasn't been run on a device yet.
+Flutter analysis and all 46 tests passed, and the debug APK built. The companion hasn't been run on a device yet.
 
 ## Live telemetry API
 

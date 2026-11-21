@@ -25,6 +25,12 @@ abstract interface class CompanionOverlay {
   /// the companion isn't showing or is busy with another action.
   Future<bool> moveTo(Offset uv);
 
+  /// The ID of the companion style chosen in settings, or null if none was.
+  Future<String?> styleId();
+
+  /// Saves the companion style. A visible companion switches right away.
+  Future<void> setStyleId(String id);
+
   /// Sends the app to the background without closing it.
   Future<void> minimizeApp();
 }
@@ -56,6 +62,13 @@ class AndroidCompanionOverlay implements CompanionOverlay {
   Future<bool> moveTo(Offset uv) async =>
       await _channel.invokeMethod<bool>('moveTo', {'u': uv.dx, 'v': uv.dy}) ??
       false;
+
+  @override
+  Future<String?> styleId() => _channel.invokeMethod<String>('getStyle');
+
+  @override
+  Future<void> setStyleId(String id) =>
+      _channel.invokeMethod<void>('setStyle', id);
 
   @override
   Future<void> minimizeApp() => _channel.invokeMethod<void>('minimizeApp');

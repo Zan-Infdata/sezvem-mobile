@@ -53,13 +53,18 @@ class CompanionWindow {
     return CompanionWindowLayout.fromMap(map ?? const {});
   }
 
+  /// The ID of the style chosen in settings, or null if none was chosen.
+  Future<String?> getStyleId() => _channel.invokeMethod<String>('getStyle');
+
   /// Handles calls from the service. [onLayoutChanged] receives the clamped
   /// layout after rotation or a display change. [onMoveTo] receives a point in
   /// 0 to 1 screen coordinates from the main app and returns whether the
-  /// companion accepted the move.
+  /// companion accepted the move. [onStyleChanged] receives a newly chosen
+  /// style ID.
   void listen({
     required void Function(CompanionWindowLayout layout) onLayoutChanged,
     required bool Function(Offset uv) onMoveTo,
+    required void Function(String styleId) onStyleChanged,
   }) {
     _channel.setMethodCallHandler((call) async {
       final args = call.arguments is Map ? call.arguments as Map : const {};
@@ -72,6 +77,10 @@ class CompanionWindow {
           final v = (args['v'] as num?)?.toDouble();
           if (u == null || v == null) return false;
           return onMoveTo(Offset(u, v));
+        case 'styleChanged':
+          final id = call.arguments;
+          if (id is String) onStyleChanged(id);
+          return null;
       }
       throw MissingPluginException(call.method);
     });

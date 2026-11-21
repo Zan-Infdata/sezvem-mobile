@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ixland_mobile/companion/companion_actions.dart';
+import 'package:ixland_mobile/companion/companion_character.dart';
 import 'package:ixland_mobile/companion/companion_animator.dart';
 import 'package:ixland_mobile/companion/companion_movement.dart';
 import 'package:ixland_mobile/companion/companion_overlay.dart';
@@ -12,7 +13,10 @@ import 'package:ixland_mobile/companion/companion_overlay_app.dart';
 import 'package:ixland_mobile/companion/companion_state.dart';
 import 'package:ixland_mobile/companion/companion_wander_test.dart';
 import 'package:ixland_mobile/companion/companion_window.dart';
+import 'package:ixland_mobile/companion/styles/classic_style.dart';
+import 'package:ixland_mobile/companion/styles/companion_style.dart';
 import 'package:ixland_mobile/devices/connected_devices_screen.dart';
+import 'package:ixland_mobile/settings/settings_screen.dart';
 
 void main() {
   group('classifySwipe', () {
@@ -209,6 +213,80 @@ void main() {
     });
   });
 
+  group('settings', () {
+    Future<void> pumpFor(WidgetTester tester, Duration duration) async {
+      const frame = Duration(milliseconds: 16);
+      for (var t = Duration.zero; t < duration; t += frame) {
+        await tester.pump(frame);
+      }
+    }
+
+    bool selected(WidgetTester tester, String name) =>
+        tester
+            .widget<RadioGroup<String>>(find.byType(RadioGroup<String>))
+            .groupValue ==
+        tester
+            .widget<RadioListTile<String>>(
+              find.widgetWithText(RadioListTile<String>, name),
+            )
+            .value;
+
+    testWidgets('opens from Connected devices with Classic selected', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _devicesScreen(_FakeCompanionOverlay(granted: true)),
+      );
+      await tester.tap(find.byTooltip('Settings'));
+      await pumpFor(tester, const Duration(milliseconds: 500));
+
+      expect(find.text('Companion style'), findsOneWidget);
+      expect(find.text('Classic'), findsOneWidget);
+      expect(selected(tester, 'Classic'), isTrue);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('saves the chosen style', (tester) async {
+      final companion = _FakeCompanionOverlay(granted: true);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            companion: companion,
+            styles: const [ClassicCompanionStyle(), _DotStyle()],
+          ),
+        ),
+      );
+      await pumpFor(tester, const Duration(milliseconds: 100));
+      expect(selected(tester, 'Classic'), isTrue);
+
+      await tester.tap(find.text('Dot'));
+      await pumpFor(tester, const Duration(milliseconds: 100));
+      expect(companion.calls, ['setStyleId:dot']);
+      expect(companion.savedStyle, 'dot');
+      expect(selected(tester, 'Dot'), isTrue);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('keeps the old style when saving fails', (tester) async {
+      final companion = _FakeCompanionOverlay(granted: true)..failSaving = true;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            companion: companion,
+            styles: const [ClassicCompanionStyle(), _DotStyle()],
+          ),
+        ),
+      );
+      await pumpFor(tester, const Duration(milliseconds: 100));
+      await tester.tap(find.text('Dot'));
+      await pumpFor(tester, const Duration(milliseconds: 100));
+
+      expect(selected(tester, 'Classic'), isTrue);
+      expect(find.text('Could not save the companion style.'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
   group('pointForUv', () {
     test('maps 0 to 1 coordinates into the padded screen area', () {
       final movement = CompanionMovementController(
@@ -378,6 +456,33 @@ void main() {
       await finish(tester);
     });
 
+    testWidgets('draws the saved style and switches when it changes', (
+      tester,
+    ) async {
+      native.styleId = 'dot';
+      const styles = [ClassicCompanionStyle(), _DotStyle()];
+      await tester.pumpWidget(
+        const SizedBox(
+          width: 96,
+          height: 96,
+          child: CompanionOverlayApp(styles: styles),
+        ),
+      );
+      await pumpFor(tester, const Duration(milliseconds: 100));
+      CompanionStyle drawn() => tester
+          .widget<CompanionCharacter>(find.byType(CompanionCharacter))
+          .style;
+      expect(drawn().id, 'dot');
+
+      await native.sendStyle(tester, 'classic');
+      expect(drawn().id, 'classic');
+
+      // An unknown style falls back to the first one.
+      await native.sendStyle(tester, 'gone');
+      expect(drawn().id, 'classic');
+      await finish(tester);
+    });
+
     testWidgets('a small drag keeps the companion on screen', (tester) async {
       await enter(tester);
       await tester.drag(companion, const Offset(20, 0), warnIfMissed: false);
@@ -409,6 +514,7 @@ class _FakeNativeWindow {
   double y = 1000;
   double width = 96;
   double height = 96;
+  String? styleId;
 
   Iterable<MethodCall> calls(String method) =>
       log.where((call) => call.method == method);
@@ -439,6 +545,8 @@ class _FakeNativeWindow {
           log.add(call);
           final args = call.arguments is Map ? call.arguments as Map : {};
           switch (call.method) {
+            case 'getStyle':
+              return styleId;
             case 'getLayout':
               return _layout();
             case 'moveTo':
@@ -459,6 +567,19 @@ class _FakeNativeWindow {
 
   /// Sends a move request from the service to the overlay, as the main app
   /// does through `CompanionOverlay.moveTo`.
+  /// Tells the overlay that a new style was chosen, as the service does.
+  Future<void> sendStyle(WidgetTester tester, String id) async {
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          _channel.name,
+          const StandardMethodCodec().encodeMethodCall(
+            MethodCall('styleChanged', id),
+          ),
+          (_) {},
+        );
+    await tester.pump();
+  }
+
   Future<Object?> sendMove(WidgetTester tester, double u, double v) async {
     const codec = StandardMethodCodec();
     ByteData? reply;
@@ -475,6 +596,26 @@ class _FakeNativeWindow {
   void uninstall() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_channel, null);
+  }
+}
+
+/// A second style for testing style choice.
+class _DotStyle extends CompanionStyle {
+  const _DotStyle();
+
+  @override
+  String get id => 'dot';
+
+  @override
+  String get name => 'Dot';
+
+  @override
+  void paint(Canvas canvas, Size size, CompanionPose pose) {
+    canvas.drawCircle(
+      size.center(Offset.zero),
+      20 * pose.inflate,
+      Paint()..color = const Color(0xFF000000),
+    );
   }
 }
 
@@ -533,4 +674,17 @@ class _FakeCompanionOverlay implements CompanionOverlay {
 
   @override
   Future<void> minimizeApp() async => calls.add('minimizeApp');
+
+  String? savedStyle;
+  bool failSaving = false;
+
+  @override
+  Future<String?> styleId() async => savedStyle;
+
+  @override
+  Future<void> setStyleId(String id) async {
+    calls.add('setStyleId:$id');
+    if (failSaving) throw PlatformException(code: 'failed');
+    savedStyle = id;
+  }
 }
