@@ -47,7 +47,7 @@ class LoginScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const defaultSeconds = 10;
+    const defaultSeconds = 60;
     const seconds = int.fromEnvironment(
       'BATCH_UPLOAD_INTERVAL_SECONDS',
       defaultValue: defaultSeconds,
