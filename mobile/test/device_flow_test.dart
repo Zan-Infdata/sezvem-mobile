@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ixland_mobile/devices/connected_devices_screen.dart';
 import 'package:ixland_mobile/devices/provider_catalog.dart';
 import 'package:ixland_mobile/main.dart';
 import 'package:ixland_mobile/wearables/metric_batch_buffer.dart';
@@ -71,7 +72,15 @@ void main() {
     await tester.tap(find.text('WHOOP test strap'));
     await tester.pumpAndSettle();
     expect(adapter.connectedDevice?.id, 'test-strap');
-    const interval = Duration(minutes: 5);
+    final interval = tester
+        .widget<ConnectedDevicesScreen>(find.byType(ConnectedDevicesScreen))
+        .batchInterval;
+    const configuredSeconds = int.fromEnvironment(
+      'BATCH_UPLOAD_INTERVAL_SECONDS',
+    );
+    if (configuredSeconds > 0) {
+      expect(interval.inSeconds, configuredSeconds);
+    }
     final start = MetricBatchBuffer(
       interval: interval,
     ).windowStart(DateTime.now()).subtract(interval);
@@ -79,13 +88,13 @@ void main() {
     adapter.events.add(
       HeartRateSample(
         bpm: 72,
-        receivedAt: start.add(const Duration(seconds: 1)),
+        receivedAt: start.add(const Duration(milliseconds: 100)),
       ),
     );
     adapter.events.add(
       HeartRateSample(
         bpm: 73,
-        receivedAt: start.add(const Duration(seconds: 2)),
+        receivedAt: start.add(const Duration(milliseconds: 200)),
       ),
     );
     await tester.pumpAndSettle();
@@ -99,7 +108,7 @@ void main() {
     final preview = tester.widget<SelectableText>(find.byType(SelectableText));
     final payload = jsonDecode(preview.data!) as Map<String, dynamic>;
     expect(payload['hr'], [72, 73]);
-    expect(payload['batch_interval_in_seconds'], 300);
+    expect(payload['batch_interval_in_seconds'], interval.inSeconds);
     expect(find.text('Samples in batch: 0'), findsOneWidget);
 
     await tester.tap(find.text('Disconnect'));
