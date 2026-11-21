@@ -38,4 +38,112 @@ void main() {
     expect(add(2, 59, 70, 'watch-2').sampleCount, 1);
     expect(add(3, 0, 67).startedAt, DateTime.utc(2026, 11, 21, 8, 3));
   });
+
+  test(
+    'extends a rejected batch and clears it only after acceptance',
+    () async {
+      final buffer = MetricBatchBuffer(interval: const Duration(minutes: 5));
+      final start = DateTime.utc(2026, 11, 21, 8);
+      final attempts = <Map<String, Object?>>[];
+
+      void addReading(int minute, int bpm) => buffer.addHeartRate(
+        providerId: 'whoop',
+        deviceId: 'strap',
+        sample: HeartRateSample(
+          bpm: bpm,
+          receivedAt: start.add(Duration(minutes: minute)),
+        ),
+      );
+
+      Future<void> flush(int minute, {required bool accepted}) =>
+          buffer.flushReady(
+            now: start.add(Duration(minutes: minute)),
+            send: (payload) async {
+              attempts.add(payload);
+              return accepted;
+            },
+          );
+
+      addReading(1, 72);
+      await flush(4, accepted: true);
+      expect(attempts, isEmpty);
+
+      await flush(5, accepted: false);
+      expect(attempts.single['hr'], [72]);
+      expect(attempts.single['batch_interval_in_seconds'], 300);
+
+      addReading(6, 75);
+      await flush(10, accepted: true);
+      expect(attempts.last, {
+        'patient_id': null,
+        'batch_timestamp': start.toIso8601String(),
+        'b_number': attempts.first['b_number'],
+        'hr': [72, 75],
+        'sleep_start': null,
+        'sleep_end': null,
+        'temperature': [],
+        'steps': null,
+        'spo2': null,
+        'batch_interval_in_seconds': 600,
+      });
+      expect(
+        buffer.pendingSampleCount(providerId: 'whoop', deviceId: 'strap'),
+        0,
+      );
+      await flush(15, accepted: true);
+      expect(attempts, hasLength(2));
+
+      addReading(16, 76);
+      await flush(20, accepted: true);
+      expect(attempts.last['b_number'], 2);
+      expect(attempts.last['hr'], [76]);
+      expect(attempts.last['batch_interval_in_seconds'], 300);
+    },
+  );
+
+  test('retries an unconfirmed payload and retains newer readings', () async {
+    final buffer = MetricBatchBuffer(interval: const Duration(minutes: 5));
+    final start = DateTime.utc(2026, 11, 21, 8);
+    final attempts = <Map<String, Object?>>[];
+
+    void addReading(int minute, int bpm) => buffer.addHeartRate(
+      providerId: 'samsung',
+      deviceId: 'watch',
+      sample: HeartRateSample(
+        bpm: bpm,
+        receivedAt: start.add(Duration(minutes: minute)),
+      ),
+    );
+
+    addReading(1, 70);
+    await buffer.flushReady(
+      now: start.add(const Duration(minutes: 5)),
+      send: (payload) async {
+        attempts.add(payload);
+        addReading(4, 71);
+        throw StateError('Response lost');
+      },
+    );
+
+    Future<void> accept(int minute) => buffer.flushReady(
+      now: start.add(Duration(minutes: minute)),
+      send: (payload) async {
+        attempts.add(payload);
+        return true;
+      },
+    );
+
+    addReading(6, 73);
+    await accept(10);
+    expect(attempts.last, same(attempts.first));
+    expect(attempts.last['hr'], [70]);
+    expect(
+      buffer.pendingSampleCount(providerId: 'samsung', deviceId: 'watch'),
+      2,
+    );
+
+    await accept(15);
+    expect(attempts.last['hr'], [71, 73]);
+    expect(attempts.last['b_number'], 2);
+  });
 }

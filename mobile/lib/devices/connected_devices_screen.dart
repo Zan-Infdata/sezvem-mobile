@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -28,13 +29,44 @@ class ConnectedDevicesScreen extends StatefulWidget {
 
 class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
   late final _batchBuffer = MetricBatchBuffer(interval: widget.batchInterval);
+  late Timer _batchTimer;
   StreamSubscription<WearableEvent>? _connection;
+  String? _providerId;
   WearableDevice? _device;
   bool _connected = false;
   bool _disconnecting = false;
   HeartRateSample? _latest;
-  int _sampleCount = 0;
   String? _error;
+  String? _batchJson;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now().toUtc();
+    final next = _batchBuffer.windowStart(now).add(_batchBuffer.interval);
+    _batchTimer = Timer(next.difference(now), () {
+      _batchTimer = Timer.periodic(
+        _batchBuffer.interval,
+        (_) => unawaited(_flushBatches()),
+      );
+      unawaited(_flushBatches());
+    });
+  }
+
+  Future<void> _flushBatches() async {
+    await _batchBuffer.flushReady(
+      now: DateTime.now().toUtc(),
+      send: _sendBatch,
+    );
+    if (mounted) setState(() {});
+  }
+
+  Future<bool> _sendBatch(Map<String, Object?> payload) async {
+    if (!mounted) return false;
+    final json = const JsonEncoder.withIndent('  ').convert(payload);
+    setState(() => _batchJson = json);
+    return true;
+  }
 
   Future<void> _addDevice() async {
     final provider = await Navigator.of(context).push(
@@ -54,6 +86,7 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
     if (!mounted || device == null) return;
 
     setState(() {
+      _providerId = provider.id;
       _device = device;
       _error = null;
     });
@@ -66,15 +99,12 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
               case WearableConnected():
                 setState(() => _connected = true);
               case HeartRateSample():
-                final batch = _batchBuffer.addHeartRate(
+                _batchBuffer.addHeartRate(
                   providerId: provider.id,
                   deviceId: device.id,
                   sample: event,
                 );
-                setState(() {
-                  _latest = event;
-                  _sampleCount = batch.sampleCount;
-                });
+                setState(() => _latest = event);
             }
           },
           onError: (Object error) => _endConnection(
@@ -127,17 +157,18 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
     if (!mounted || _device == null) return;
     setState(() {
       _connection = null;
+      _providerId = null;
       _device = null;
       _connected = false;
       _disconnecting = false;
       _latest = null;
-      _sampleCount = 0;
       _error = error;
     });
   }
 
   @override
   void dispose() {
+    _batchTimer.cancel();
     unawaited(_connection?.cancel());
     super.dispose();
   }
@@ -145,21 +176,33 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
   @override
   Widget build(BuildContext context) {
     final device = _device;
+    final providerId = _providerId;
     final latest = _latest;
+    final batchJson = _batchJson;
+    final pendingSamples = providerId == null || device == null
+        ? 0
+        : _batchBuffer.pendingSampleCount(
+            providerId: providerId,
+            deviceId: device.id,
+          );
     return Scaffold(
       appBar: AppBar(title: const Text('Connected devices')),
-      body: device == null
+      body: device == null && batchJson == null
           ? Center(child: Text(_error ?? 'No connected devices'))
           : ListView(
+              padding: const EdgeInsets.only(bottom: 80),
               children: [
-                ListTile(
-                  title: Text(device.name),
-                  subtitle: Text(_connected ? 'Connected' : 'Connecting…'),
-                  trailing: TextButton(
-                    onPressed: _disconnecting ? null : _disconnect,
-                    child: Text(_connected ? 'Disconnect' : 'Cancel'),
+                if (device == null)
+                  ListTile(title: Text(_error ?? 'No connected devices'))
+                else
+                  ListTile(
+                    title: Text(device.name),
+                    subtitle: Text(_connected ? 'Connected' : 'Connecting…'),
+                    trailing: TextButton(
+                      onPressed: _disconnecting ? null : _disconnect,
+                      child: Text(_connected ? 'Disconnect' : 'Cancel'),
+                    ),
                   ),
-                ),
                 if (_connected)
                   ListTile(
                     title: Text(
@@ -167,7 +210,20 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
                           ? 'Waiting for heart rate'
                           : '${latest.bpm} bpm',
                     ),
-                    subtitle: Text('Samples in batch: $_sampleCount'),
+                    subtitle: Text('Samples in batch: $pendingSamples'),
+                  ),
+                if (batchJson != null)
+                  ExpansionTile(
+                    title: const Text('Batch JSON (debug)'),
+                    initiallyExpanded: true,
+                    childrenPadding: const EdgeInsets.all(16),
+                    expandedAlignment: Alignment.centerLeft,
+                    children: [
+                      SelectableText(
+                        batchJson,
+                        style: const TextStyle(fontFamily: 'monospace'),
+                      ),
+                    ],
                   ),
               ],
             ),

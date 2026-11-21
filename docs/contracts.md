@@ -4,7 +4,7 @@ The wearable upload fields below are the requested mobile-to-backend payload. Th
 
 ## Wearable metric upload
 
-Send one JSON object per batch over an authenticated HTTPS POST. Use `POST /v1/metric-batches` as the proposed route and `Content-Type: application/json`. All nine fields are required. Send `hrv` as JSON `null` when unavailable. [JSON format](https://www.rfc-editor.org/rfc/rfc8259.html)
+Send one JSON object per batch over an authenticated HTTPS POST. Use `POST /v1/metric-batches` as the proposed route and `Content-Type: application/json`. All ten fields are required. Send both sleep fields as JSON `null` for regular batches. [JSON format](https://www.rfc-editor.org/rfc/rfc8259.html)
 
 | Field | Type | Proposed meaning |
 | --- | --- | --- |
@@ -12,10 +12,11 @@ Send one JSON object per batch over an authenticated HTTPS POST. Use `POST /v1/m
 | `batch_timestamp` | `timestamp` | Start of the measurement window, encoded as a UTC RFC 3339 string ending in `Z`. The backend records receipt time separately. [Timestamp format](https://www.rfc-editor.org/rfc/rfc3339.html) |
 | `b_number` | `int` | Increasing batch number scoped to the patient. Preserve it across retries and app restarts. Confirm how to resume the sequence after reinstall or a phone change. |
 | `hr` | `int[]` | Heart-rate samples in beats per minute, ordered by measurement time within the window. |
-| `hrv` | `int\|null` | One HRV value in whole milliseconds, or `null` when unavailable. Confirm the HRV method, source period, and rounding rule. |
+| `sleep_start` | `timestamp\|null` | Start of a completed sleep session as a UTC RFC 3339 string ending in `Z`, or `null`. |
+| `sleep_end` | `timestamp\|null` | End of the same session, in the same format and later than `sleep_start`, or `null`. |
 | `temperature` | `float[]` | Temperature samples as finite JSON numbers in degrees Celsius, ordered by measurement time within the window. Confirm which measurement types to accept, such as skin temperature. |
-| `steps` | `int` | Step count for this window. Zero represents a measured count of zero. |
-| `spo2` | `int` | One oxygen saturation value as a whole percentage. Confirm whether to use the latest valid sample or a window summary, and how to round it. |
+| `steps` | `int` | Latest current step count reported by the wearable when the batch is prepared. Send the count as reported, with no deltas or accumulation. Repeated counts and device resets are valid. Zero represents a measured count of zero. |
+| `spo2` | `int\|null` | Oxygen saturation as a whole percentage when supported. Send JSON `null` in every batch for now. |
 | `batch_interval_in_seconds` | `int` | Positive duration of the measurement window in seconds. |
 
 ```json
@@ -24,26 +25,50 @@ Send one JSON object per batch over an authenticated HTTPS POST. Use `POST /v1/m
   "batch_timestamp": "2026-03-01T10:00:00Z",
   "b_number": 42,
   "hr": [71, 73, 72],
-  "hrv": null,
+  "sleep_start": null,
+  "sleep_end": null,
   "temperature": [33.4, 33.5],
-  "steps": 18,
-  "spo2": 97,
+  "steps": 4218,
+  "spo2": null,
   "batch_interval_in_seconds": 300
 }
 ```
 
-Each window includes its start and excludes its end. Arrays are independent, may have different lengths, and carry no per-sample timestamps. Propose using an empty array for a metric with no samples. If a provider supplies no `steps` or `spo2` value, the current schema has no missing-value representation for that field. Agree on whether to hold or skip incomplete windows or revise the schema before using those providers in staging. Use only measured or agreed derived values.
+Each window includes its start and excludes its end. Arrays are independent, may have different lengths, and carry no per-sample timestamps. Propose using an empty array for a metric with no samples. If a provider supplies no `steps` value, the current schema has no missing-value representation for that field. Agree on whether to hold or skip incomplete windows or revise the schema before using those providers in staging. Use only measured or agreed derived values.
+
+## Completed sleep and backend HRV
+
+Attach `sleep_start` and `sleep_end` together to the next eligible batch when a completed sleep session becomes available. Send each session in one logical batch. Both timestamps describe the sleep session and can be earlier than the batch window. If either timestamp is missing, send `null` for both until the session is complete.
+
+```json
+{
+  "patient_id": 123,
+  "batch_timestamp": "2026-03-01T10:05:00Z",
+  "b_number": 43,
+  "hr": [72, 74, 73],
+  "sleep_start": "2026-02-28T22:46:00Z",
+  "sleep_end": "2026-03-01T06:53:00Z",
+  "temperature": [33.5],
+  "steps": 4218,
+  "spo2": null,
+  "batch_interval_in_seconds": 300
+}
+```
+
+Persist the association between a session and its batch so a provider resync or app restart does not schedule it again. On a retry, resend the same sealed batch with its original `b_number` and sleep values. The backend handles the HRV trigger idempotently.
+
+When both timestamps are present, the backend uses the sleep window to calculate HRV from beat-to-beat intervals for that period. The `hr` array contains BPM samples. This payload still needs an agreed transport for the underlying intervals and their timestamps. If the sleep window arrives first, the backend can wait for the interval data before calculating HRV.
 
 ## Configurable upload cadence
 
 - Configure a positive integer `batch_upload_interval_minutes` as the target time between upload runs. Confirm the default and configuration source with the backend developer. Start with measurement windows of the same length. A five-minute configuration uses 300-second windows, so the example covers 10:00 UTC up to 10:05 UTC.
-- At each upload run, send each ready window as a separate POST. A run can send several queued batches after network recovery. Preserve their original timestamps and durations even when delivery is delayed. Apply interval changes to new windows and leave sealed batches intact.
+- At each upload run, send completed windows. When a batch is known to have been rejected or never delivered, keep it in the buffer and append new completed windows from the same connection. Keep its first window start, append the heart-rate samples in order, and set `batch_interval_in_seconds` to the span through the end of the last included window. Two consecutive five-minute windows cover 600 seconds. Apply interval changes to new windows and leave unconfirmed payloads intact.
 - Android may delay background uploads. If the app uses periodic WorkManager jobs, their minimum repeat interval is 15 minutes and run times depend on system scheduling. Agree on an acceptable delay and confirm whether the selected cadence must hold while the app is closed. [Android periodic work scheduling](https://developer.android.com/develop/background-work/background-tasks/persistent/getting-started/define-work#schedule_periodic_work)
 
 ## Acceptance and retries
 
 - A live BLE adapter emits timestamped observations. A paged provider can also return an opaque cursor, which the sync coordinator persists with the observations. Scope the future durable queue to the active account, episode, and connection and seal each batch before sending it. Remove a queue item only after the backend durably accepts it. Pause transfer when the account changes, the episode closes, or access is revoked.
-- Propose deduplicating by `(patient_id, b_number)` with a patient-scoped sequence. A retry sends the same JSON with the same batch number. Confirm sequence ownership before using multiple phones or changing phones. Use the measurement timestamp to process delayed batches in event time.
+- Propose deduplicating by `(patient_id, b_number)` with a patient-scoped sequence. When acceptance is unknown, such as after a lost response, retry with the same JSON and batch number before sending newer data. A confirmed non-acceptance allows extending that batch with newer windows under the same number. Confirm sequence ownership before using multiple phones or changing phones. Use the measurement timestamp to process delayed batches in event time.
 - Proposed responses are `202` for durably accepted, `200` for an already accepted identical batch, and `409` when the same identity arrives with different content. Retry timeouts, `429`, and transient server errors with backoff. Pause on expired login until the same account reauthenticates. Surface permanent rejections as sync errors. A receipt confirms storage. Recovery assessments arrive through the separate interface below.
 - Record the latest measurement and latest successful upload separately. A successful wearable read with zero observations can update connectivity status.
 
@@ -66,6 +91,7 @@ The snapshot should include the episode ID, assessment time, data-through time, 
 | --- | --- |
 | Identity and enrollment | Sign-in method, how a discharged patient receives access, episode ID and collection period, and responses for no active or completed episode. |
 | Metric ingest | Route, auth, connection and episode association, default upload cadence, payload and array limits, unit conversions and scalar aggregation, incomplete windows, sequence ownership, and response codes. Confirm source provenance if batches can include data from more than one wearable. |
+| Sleep and HRV | Confirm how to transmit time-aligned beat-to-beat intervals, handle late or incomplete coverage, and calculate HRV for the completed sleep window. |
 | Samsung connection | Foreground heart rate currently comes from the Wear OS companion. Confirm consent and revocation behavior and how to handle the other required POST fields. |
 | WHOOP connection | Live heart rate comes from Bluetooth. Agree on how to handle the other required POST fields. If adding cloud summaries, confirm OAuth redirect, server-side credentials, sandbox accounts, and who ingests the summaries. |
 | Assessments | Actual status values, freshness, notice fields, approved patient copy and actions, update method, and possible acknowledgment behavior. |
