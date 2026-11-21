@@ -215,10 +215,18 @@ Run `flutter test` and `flutter analyze` for fixture verification. `telemetry_ap
 
 ## Patient ID settings
 
-On **Connected devices → Settings**, the **Patient ID** field shows the active ID. Edit it and tap **Save patient ID** to apply it, or tap **Create patient** to generate and save a random ID beginning with `test-`. The `createPatient()` function in `mobile/lib/settings/patient_settings.dart` currently generates the ID locally. Replace its implementation when the backend provides a patient creation endpoint.
+On **Connected devices → Settings**, the **Patient ID** field shows the active ID. Edit it and tap **Save patient ID** to apply it, or tap **Create patient** to get a new ID from the API.
 
 Android stores the saved value in private app preferences via the `ixland/patient_settings` channel. A saved value takes precedence over the optional `BATCH_PATIENT_ID` build-time default. IDs accept 1–128 ASCII letters, digits, hyphens, and underscores. An invalid edit leaves the last saved ID active.
 
 New readings use the saved ID immediately. The first ID also claims readings buffered before any ID was configured. Readings already assigned to an ID keep it through upload retries. The app groups batches by patient, provider, and device to keep their samples separate.
 
-To check on the phone, save a test ID, restart the app, and reopen Settings. Connect a wearable and compare the saved value with `patient_id` in the debug JSON. **Debug jam** lets you check the payload while skipping the upload. Flutter tests verify edits, local creation, restoration through a mocked preferences channel, and separate uploads across a change of patient ID.
+To check on the phone, save a test ID, restart the app, and reopen Settings. Connect a wearable and compare the saved value with `patient_id` in the debug JSON. **Debug jam** lets you check the payload while skipping the upload. Flutter tests verify edits, restoration through a mocked preferences channel, and separate uploads across a change of patient ID.
+
+## Create a patient through the API
+
+**Create patient** sends `POST /patients` with `{"name":"IXLand patient"}`. The API requires a name, so the button uses a placeholder to keep creation to one tap. The API generates the ID. The app validates the `patient_id` in the HTTP 201 response and saves it to Android preferences before using it for new readings. [Deployed API documentation](https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/docs)
+
+`PatientApi` in `mobile/lib/sync/patient_api.dart` derives the creation URL from `BATCH_API_URL` by replacing the last path segment with `patients`. A rejection or unconfirmed creation leaves the current ID active. The app sends one request per creation attempt. If Android fails to save a confirmed ID, tapping **Create patient** again in the same app session retries saving that ID.
+
+`patient_api_test.dart` exercises the HTTP contract against a local server. `patient_settings_test.dart` covers saving and restoring a returned ID and retrying a failed local save. `device_flow_test.dart` checks that clicking **Create patient** puts the new ID on the next batch while telemetry already buffered for the previous ID keeps its assignment.

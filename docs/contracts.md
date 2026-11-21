@@ -10,6 +10,8 @@ The mobile app posts the exact payload shown in **Batch JSON (debug)**. It maps 
 
 Configure the full POST endpoint with `BATCH_API_URL` and set the patient ID in the app's **Settings**. `BATCH_PATIENT_ID` supplies an optional initial value. Live batch numbers start from the current Unix time in microseconds and increment in memory. The app preserves the body on an uncertain outcome. It accepts a documented duplicate response only for a batch that previously had an uncertain outcome. See [mobile verification](mobile-implementation.md#live-telemetry-api).
 
+**Create patient** posts a name to `POST /patients` and uses the server-assigned `patient_id` from the HTTP 201 response for new readings. See [patient creation setup](mobile-implementation.md#create-a-patient-through-the-api).
+
 ## Wearable metric upload
 
 Send one JSON object per batch over an authenticated HTTPS POST. Use `POST /v1/metric-batches` as the proposed route and `Content-Type: application/json`. All ten fields are required. Send both sleep fields as JSON `null` for regular batches. [JSON format](https://www.rfc-editor.org/rfc/rfc8259.html)
