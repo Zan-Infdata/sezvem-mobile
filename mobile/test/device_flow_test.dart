@@ -221,8 +221,7 @@ void main() {
 }
 
 class _TestTelemetryApi extends TelemetryApi {
-  _TestTelemetryApi()
-    : super(url: 'https://example.test/batches', includeSampleTimestamps: true);
+  _TestTelemetryApi() : super(url: 'https://example.test/batches');
 
   final posts = <Map<String, Object?>>[];
 

@@ -261,6 +261,6 @@ Build and update both Android APKs, open **IXLand Watch**, tap **Start**, and gr
 
 ## Heart-rate sample timestamps
 
-The WHOOP and Samsung adapters already capture the phone's receipt time on each heart-rate event. The batch buffer stores those times with their readings and serializes them as UTC ISO 8601 strings. With `--dart-define=BATCH_SEND_SAMPLE_TIMESTAMPS=true`, the telemetry gateway sends them in the top-level `sample_timestamps` array in the same order as `hr`. Filtering out a BPM value removes the corresponding timestamp. Temperature and step totals remain batch fields.
+The WHOOP and Samsung adapters capture the phone's receipt time on each heart-rate event. The batch buffer stores those times with their readings and serializes them as UTC ISO 8601 strings. Every batch POST includes the top-level `sample_timestamps` array in the same order as `hr`. Filtering out a BPM value removes the corresponding timestamp. Temperature and step totals remain batch fields.
 
-**Batch JSON (debug)** shows the configured POST body. A merged batch retains each reading's receipt time, and an unconfirmed upload retries the original pairs. Flutter buffer, widget, and loopback HTTP tests cover these paths. The flag defaults to false until the backend supports the field. [Deployed API documentation](https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/docs)
+**Batch JSON (debug)** shows the POST body. A merged batch retains each reading's receipt time, and an unconfirmed upload retries the original pairs. Flutter buffer, widget, and loopback HTTP tests cover these paths. Live upload requires the backend update that accepts the field. [Deployed API documentation](https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/docs)
