@@ -78,15 +78,15 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
   AssistantChat? _chat;
   Completer<void>? _chatClosed;
 
-  /// The head's rectangle in the expanded window when the chat opened, in
-  /// logical pixels. Null while the chat is closed.
-  Rect? _chatFrom;
+  /// Where the character is in the expanded window, in logical pixels. The
+  /// head stays exactly there while the chat is open. Null while the chat is
+  /// closed.
+  Rect? _chatHead;
 
-  /// Whether the open chat is fully shown rather than animating closed.
+  /// Whether the backdrop and panel are faded in.
   bool _chatShown = false;
 
-  static const _chatAnimation = Duration(milliseconds: 220);
-  static const _headSize = 96.0;
+  static const _chatFade = Duration(milliseconds: 180);
 
   @override
   void initState() {
@@ -126,8 +126,9 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
     actions.run(enterFromRight);
   }
 
-  /// Expands the window into a chat head with the panel below it, and
-  /// completes after the user closes it and the window is small again.
+  /// Expands the window around the character, which becomes the chat head,
+  /// and fades in the panel below it. Completes after the user closes the
+  /// chat and the window is small again.
   Future<void> _openChat() async {
     final movement = _movement;
     if (movement == null || !mounted) return;
@@ -141,20 +142,25 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
     unawaited(chat.prepare());
     final closed = _chatClosed = Completer<void>();
     setState(() {
-      _chatFrom = Rect.fromLTWH(
+      _chatHead = Rect.fromLTWH(
         (from.x - expanded.x) / density,
         (from.y - expanded.y) / density,
         from.width / density,
         from.height / density,
       );
-      _chatShown = true;
+      _chatShown = false;
+    });
+    // Fade in from the next frame, so the expanded window first shows only
+    // the character where it already was.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _chatHead != null) setState(() => _chatShown = true);
     });
     await closed.future;
     if (!mounted) return;
     setState(() => _chatShown = false);
-    await Future<void>.delayed(_chatAnimation);
+    await Future<void>.delayed(_chatFade);
     if (!mounted) return;
-    setState(() => _chatFrom = null);
+    setState(() => _chatHead = null);
     movement.updateLayout(await _window.collapse());
   }
 
@@ -214,64 +220,50 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       color: const Color(0x00000000),
-      home: _chatFrom == null ? _buildCharacter() : _buildChat(),
+      home: _chatHead == null ? _buildCharacter() : _buildChat(),
     );
   }
 
   Widget _buildChat() {
     final chat = _chat!;
-    final from = _chatFrom!;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final head = Rect.fromLTWH(
-          constraints.maxWidth - 8 - _headSize,
-          8,
-          _headSize,
-          _headSize,
-        );
-        final keyboard = MediaQuery.viewInsetsOf(context).bottom;
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: _closeChat,
-                child: AnimatedOpacity(
-                  opacity: _chatShown ? 1 : 0,
-                  duration: _chatAnimation,
-                  child: const ColoredBox(color: Color(0x8A000000)),
-                ),
-              ),
+    final head = _chatHead!;
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: _closeChat,
+            child: AnimatedOpacity(
+              opacity: _chatShown ? 1 : 0,
+              duration: _chatFade,
+              child: const ColoredBox(color: Color(0x8A000000)),
             ),
-            Positioned(
-              left: 12,
-              right: 12,
-              top: head.bottom + 8,
-              bottom: 12 + keyboard,
-              child: AnimatedOpacity(
-                opacity: _chatShown ? 1 : 0,
-                duration: _chatAnimation,
-                child: CompanionChatPanel(chat: chat, onClose: _closeChat),
-              ),
+          ),
+        ),
+        Positioned(
+          left: 12,
+          right: 12,
+          top: head.bottom + 4,
+          bottom: 12 + keyboard,
+          child: AnimatedOpacity(
+            opacity: _chatShown ? 1 : 0,
+            duration: _chatFade,
+            child: CompanionChatPanel(chat: chat, onClose: _closeChat),
+          ),
+        ),
+        Positioned.fromRect(
+          rect: head,
+          child: Semantics(
+            button: true,
+            label: 'IXLand companion. Tap to close the chat.',
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _closeChat,
+              child: CompanionCharacter(animator: _animator, style: _style),
             ),
-            TweenAnimationBuilder<Rect?>(
-              tween: RectTween(begin: from, end: _chatShown ? head : from),
-              duration: _chatAnimation,
-              curve: Curves.easeOut,
-              builder: (context, rect, child) =>
-                  Positioned.fromRect(rect: rect ?? head, child: child!),
-              child: Semantics(
-                button: true,
-                label: 'IXLand companion. Tap to close the chat.',
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _closeChat,
-                  child: CompanionCharacter(animator: _animator, style: _style),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+          ),
+        ),
+      ],
     );
   }
 

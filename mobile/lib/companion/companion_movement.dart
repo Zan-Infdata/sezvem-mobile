@@ -49,6 +49,11 @@ class CompanionMovementController {
   /// Resting x position near the right edge of the usable screen area.
   double get restX => _layout.screenRight - _layout.width - 8 * _layout.density;
 
+  /// The window position where the chat opens: the top-right corner of the
+  /// usable screen, with the same margin as [restX].
+  Offset get chatHeadPoint =>
+      Offset(restX, _layout.screenTop + 8 * _layout.density);
+
   /// The x position just past the left or right screen edge.
   double offscreenX({required bool left}) =>
       left ? _layout.screenLeft - _layout.width : _layout.screenRight;

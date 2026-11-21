@@ -457,8 +457,11 @@ void main() {
     ) async {
       await enter(tester);
       await tester.tap(companion);
-      await pumpFor(tester, const Duration(milliseconds: 400));
-      expect(native.calls('expand'), hasLength(1));
+      // The window hurries to the top-right corner before the chat opens.
+      await pumpFor(tester, const Duration(milliseconds: 300));
+      expect(native.calls('expand'), isEmpty);
+      await pumpFor(tester, const Duration(seconds: 1));
+      expect((native.calls('expand').length, native.lastMoveY), (1, 8.0));
       expect(assistant.loads, 1);
       expect(find.text('IXLand companion'), findsOneWidget);
       expect(find.textContaining('Gemma 4 E2B on CPU'), findsOneWidget);
@@ -481,20 +484,22 @@ void main() {
       await tester.pump();
 
       await tester.tap(find.byTooltip('Close chat'));
-      await pumpFor(tester, const Duration(milliseconds: 400));
+      await pumpFor(tester, const Duration(milliseconds: 300));
       expect(native.calls('collapse'), hasLength(1));
       expect(find.text('IXLand companion'), findsNothing);
+      // Then it hurries back to where it was.
+      await pumpFor(tester, const Duration(seconds: 1));
       expect((native.x, native.y, native.width), (880.0, 1000.0, 192.0));
 
       // Reopening keeps the conversation in memory without loading again.
       await tester.tap(companion);
-      await pumpFor(tester, const Duration(milliseconds: 400));
+      await pumpFor(tester, const Duration(milliseconds: 1300));
       expect(find.text('Hello, friend!'), findsOneWidget);
       expect(assistant.loads, 1);
 
       // Back closes the open chat.
       await native.pressBack(tester);
-      await pumpFor(tester, const Duration(milliseconds: 400));
+      await pumpFor(tester, const Duration(milliseconds: 1300));
       expect(native.calls('collapse'), hasLength(2));
       await finish(tester);
     });
@@ -506,7 +511,7 @@ void main() {
       );
       await enter(tester);
       await tester.tap(companion);
-      await pumpFor(tester, const Duration(milliseconds: 400));
+      await pumpFor(tester, const Duration(milliseconds: 1300));
       expect(find.text('Model file not found'), findsOneWidget);
       expect(
         find.textContaining('/sdcard/models/gemma-4-E2B-it.litertlm'),
@@ -517,7 +522,7 @@ void main() {
       await tester.pump();
       expect(assistant.sent, isEmpty);
       await tester.tap(find.byTooltip('Close chat'));
-      await pumpFor(tester, const Duration(milliseconds: 400));
+      await pumpFor(tester, const Duration(milliseconds: 1300));
       await finish(tester);
     });
 
@@ -572,10 +577,10 @@ void main() {
 
       await pumpFor(tester, const Duration(seconds: 2));
       await tester.tap(companion);
-      await pumpFor(tester, const Duration(milliseconds: 400));
+      await pumpFor(tester, const Duration(milliseconds: 1300));
       expect(native.calls('expand'), hasLength(1));
       await native.pressBack(tester);
-      await pumpFor(tester, const Duration(milliseconds: 400));
+      await pumpFor(tester, const Duration(milliseconds: 1300));
       await finish(tester);
     });
 
@@ -707,6 +712,7 @@ class _FakeNativeWindow {
   double height = 192;
   CompanionLook look = const CompanionLook();
   (double, double, double, double)? _collapsed;
+  double? lastMoveY;
 
   Iterable<MethodCall> calls(String method) =>
       log.where((call) => call.method == method);
@@ -744,6 +750,7 @@ class _FakeNativeWindow {
             case 'moveTo':
               x = (args['x'] as num).toDouble();
               y = (args['y'] as num).toDouble();
+              lastMoveY = y;
             case 'expand':
               _collapsed = (x, y, width, height);
               x = 0;

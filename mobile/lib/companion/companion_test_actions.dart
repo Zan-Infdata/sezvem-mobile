@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'companion_actions.dart';
 import 'companion_state.dart';
 import 'styles/companion_style.dart';
@@ -17,10 +18,32 @@ Map<CompanionInput, CompanionAction> testCompanionActions() => {
   CompanionInput.hold: inflate,
 };
 
-/// Bounces and opens the chat with the on-device assistant until it closes.
+/// How much faster than walking the companion moves to and from the chat.
+const chatMoveSpeedFactor = 8.0;
+
+/// Hurries to the top-right corner, opens the chat with the on-device
+/// assistant there, and hurries back after the chat closes.
 Future<void> chat(CompanionActionContext context) async {
-  context.animator.state = CompanionState.reacting;
-  await Future.wait([context.animator.bounce(), context.openChat()]);
+  final movement = context.movement;
+  final home = Offset(movement.x, movement.y);
+  await _hurryTo(context, movement.chatHeadPoint);
+  context.animator.state = CompanionState.idle;
+  await context.openChat();
+  await _hurryTo(context, home);
+}
+
+Future<void> _hurryTo(CompanionActionContext context, Offset target) async {
+  final movement = context.movement;
+  if (target.dx != movement.x) {
+    context.animator.facing = target.dx < movement.x
+        ? CompanionFacing.left
+        : CompanionFacing.right;
+  }
+  context.animator.state = CompanionState.walking;
+  await movement.walkToPoint(
+    target,
+    speed: movement.speed * chatMoveSpeedFactor,
+  );
 }
 
 /// Runs off the left or right edge and closes the companion.

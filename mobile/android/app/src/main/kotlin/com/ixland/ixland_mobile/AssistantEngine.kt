@@ -50,8 +50,15 @@ internal object AssistantEngine {
     @Volatile private var loadMs: Long? = null
     @Volatile private var replying = false
 
-    fun modelFile(context: Context): File =
-        File(context.getExternalFilesDir(null), "models/$MODEL_FILE")
+    /**
+     * The model's expected location. Creates the app-owned `models` folder so a file copied there
+     * with ADB stays readable by the app.
+     */
+    fun modelFile(context: Context): File {
+        val folder = File(context.getExternalFilesDir(null), "models")
+        folder.mkdirs()
+        return File(folder, MODEL_FILE)
+    }
 
     /** The engine state for Flutter: unloaded, loading, ready, missing, or error. */
     fun status(context: Context): Map<String, Any?> {

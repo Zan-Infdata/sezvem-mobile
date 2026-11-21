@@ -312,14 +312,17 @@ curl -L -C - -o models/gemma-4-E2B-it.litertlm \
 
 ```sh
 adb shell mkdir -p /sdcard/Android/data/com.ixland.ixland_mobile/files/models
+adb shell chmod 2775 /sdcard/Android/data/com.ixland.ixland_mobile/files/models
 adb push models/gemma-4-E2B-it.litertlm /sdcard/Android/data/com.ixland.ixland_mobile/files/models/
 ```
+
+A folder created by `adb shell mkdir` belongs to the shell user and blocks the app, so the chat reports the model as missing. The `chmod` line fixes that. The app also creates the folder itself when the chat opens, so after the app has opened the chat once, `adb push` alone is enough.
 
 Check free phone storage first with `adb shell df -h /data`. E2B needs roughly 2.6 GB of storage and several GB of free RAM while loaded. The larger E4B file (3.66 GB) is not used on the test phone.
 
 ## Companion chat with on-device Gemma
 
-Tap the companion to open a chat with Gemma 4 E2B running on the phone through Google's LiteRT-LM. The window grows to the usable screen behind a dim backdrop. The character slides to the top right as the chat head, and the chat panel opens below it. Type a message and the reply streams in. Tap the head, the backdrop, **Close chat**, or Back to close it. The window returns to the character's earlier spot. While the chat is open, the companion ignores other gestures and moves from the main app.
+Tap the companion to open a chat with Gemma 4 E2B running on the phone through Google's LiteRT-LM. The companion hurries to the top-right corner at eight times its walking speed. There the window grows to the usable screen around it, a dim backdrop and the chat panel fade in, and the character stays in place at its normal size as the chat head. After the chat closes, the window shrinks around the character and it hurries back to where it was. Type a message and the reply streams in. Tap the head, the backdrop, **Close chat**, or Back to close it. The window returns to the character's earlier spot. While the chat is open, the companion ignores other gestures and moves from the main app.
 
 Messages and the model's conversation exist in memory only. Closing and reopening the chat keeps them. **New chat** clears them. When the companion window closes, the chat is discarded and the model unloads to free its memory. Nothing is sent over the network or written to storage, and native logs contain only load and reply timings and chunk counts, never message text.
 
