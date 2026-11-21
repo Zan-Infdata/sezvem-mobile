@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ixland_mobile/devices/provider_catalog.dart';
 import 'package:ixland_mobile/main.dart';
+import 'package:ixland_mobile/wearables/metric_batch_buffer.dart';
 import 'package:ixland_mobile/wearables/wearable_adapter.dart';
 import 'package:ixland_mobile/wearables/whoop/whoop_ble_adapter.dart';
 
@@ -37,6 +39,7 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.text('Connected devices'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('connects the selected device and batches live readings', (
@@ -68,28 +71,44 @@ void main() {
     await tester.tap(find.text('WHOOP test strap'));
     await tester.pumpAndSettle();
     expect(adapter.connectedDevice?.id, 'test-strap');
+    const interval = Duration(minutes: 5);
+    final start = MetricBatchBuffer(
+      interval: interval,
+    ).windowStart(DateTime.now()).subtract(interval);
     adapter.events.add(const WearableConnected());
     adapter.events.add(
       HeartRateSample(
         bpm: 72,
-        receivedAt: DateTime.utc(2026, 11, 21, 15, 0, 1),
+        receivedAt: start.add(const Duration(seconds: 1)),
       ),
     );
     adapter.events.add(
       HeartRateSample(
         bpm: 73,
-        receivedAt: DateTime.utc(2026, 11, 21, 15, 0, 2),
+        receivedAt: start.add(const Duration(seconds: 2)),
       ),
     );
     await tester.pumpAndSettle();
     expect(find.text('73 bpm'), findsOneWidget);
     expect(find.text('Samples in batch: 2'), findsOneWidget);
+    expect(find.text('Batch JSON (debug)'), findsNothing);
+
+    await tester.pump(interval);
+    await tester.pumpAndSettle();
+    expect(find.text('Batch JSON (debug)'), findsOneWidget);
+    final preview = tester.widget<SelectableText>(find.byType(SelectableText));
+    final payload = jsonDecode(preview.data!) as Map<String, dynamic>;
+    expect(payload['hr'], [72, 73]);
+    expect(payload['batch_interval_in_seconds'], 300);
+    expect(find.text('Samples in batch: 0'), findsOneWidget);
 
     await tester.tap(find.text('Disconnect'));
     expect(adapter.events.hasListener, isFalse);
     adapter.disconnected.complete();
     await tester.pumpAndSettle();
     expect(find.text('No connected devices'), findsOneWidget);
+    expect(find.text('Batch JSON (debug)'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
     unawaited(adapter.events.close());
   });
 }
