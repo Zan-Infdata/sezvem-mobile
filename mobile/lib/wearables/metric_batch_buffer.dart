@@ -11,10 +11,11 @@ final class MetricBatch {
   final String deviceId;
   final DateTime startedAt;
   final Duration duration;
-  final List<HeartRateSample> _heartRates = [];
+  final List<WearableSample> _samples = [];
 
-  List<HeartRateSample> get heartRates => List.unmodifiable(_heartRates);
-  int get sampleCount => _heartRates.length;
+  List<HeartRateSample> get heartRates =>
+      List.unmodifiable(_samples.whereType<HeartRateSample>());
+  int get sampleCount => _samples.length;
 }
 
 final class MetricBatchBuffer {
@@ -39,11 +40,11 @@ final class MetricBatchBuffer {
     );
   }
 
-  MetricBatch addHeartRate({
+  MetricBatch addSample({
     String? patientId,
     required String providerId,
     required String deviceId,
-    required HeartRateSample sample,
+    required WearableSample sample,
   }) {
     final startedAt = windowStart(sample.receivedAt);
     final connection = _connections.putIfAbsent((
@@ -55,7 +56,7 @@ final class MetricBatchBuffer {
       startedAt,
       () => MetricBatch._(providerId, deviceId, startedAt, interval),
     );
-    batch._heartRates.add(sample);
+    batch._samples.add(sample);
     return batch;
   }
 
@@ -118,7 +119,7 @@ final class MetricBatchBuffer {
         for (final entry in attempt.sampleCounts.entries) {
           final window = entry.key;
           // Leave samples that arrived after this payload was created.
-          window._heartRates.removeRange(0, entry.value);
+          window._samples.removeRange(0, entry.value);
           if (window.sampleCount == 0) {
             connection.windows.remove(window.startedAt);
           }
@@ -139,27 +140,32 @@ final class _ConnectionBuffer {
 
 final class _BatchAttempt {
   _BatchAttempt(List<MetricBatch> windows, int batchNumber, String? patientId)
-    : sampleCounts = {for (final window in windows) window: window.sampleCount},
-      payload = Map.unmodifiable({
-        'patient_id': patientId,
-        'batch_timestamp': windows.first.startedAt.toIso8601String(),
-        'b_number': batchNumber,
-        'hr': List<int>.unmodifiable(
-          windows.expand(
-            (window) => window._heartRates.map((sample) => sample.bpm),
-          ),
-        ),
-        'sleep_start': null,
-        'sleep_end': null,
-        'temperature': const <double>[],
-        'steps': null,
-        'spo2': null,
-        'batch_interval_in_seconds': windows.last.startedAt
-            .add(windows.last.duration)
-            .difference(windows.first.startedAt)
-            .inSeconds,
-      });
+    : sampleCounts = {
+        for (final window in windows) window: window.sampleCount,
+      } {
+    final samples = windows.expand((window) => window._samples);
+    final stepCounts = samples.whereType<StepCountSample>();
+    payload = Map.unmodifiable({
+      'patient_id': patientId,
+      'batch_timestamp': windows.first.startedAt.toIso8601String(),
+      'b_number': batchNumber,
+      'hr': List<int>.unmodifiable(
+        samples.whereType<HeartRateSample>().map((sample) => sample.bpm),
+      ),
+      'sleep_start': null,
+      'sleep_end': null,
+      'temperature': List<double>.unmodifiable(
+        samples.whereType<TemperatureSample>().map((sample) => sample.celsius),
+      ),
+      'steps': stepCounts.isEmpty ? null : stepCounts.last.count,
+      'spo2': null,
+      'batch_interval_in_seconds': windows.last.startedAt
+          .add(windows.last.duration)
+          .difference(windows.first.startedAt)
+          .inSeconds,
+    });
+  }
 
   final Map<MetricBatch, int> sampleCounts;
-  final Map<String, Object?> payload;
+  late final Map<String, Object?> payload;
 }

@@ -146,14 +146,16 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
             switch (event) {
               case WearableConnected():
                 setState(() => _connected = true);
-              case HeartRateSample():
-                _batchBuffer.addHeartRate(
+              case WearableSample():
+                _batchBuffer.addSample(
                   patientId: widget.patientSettings.patientId,
                   providerId: provider.id,
                   deviceId: device.id,
                   sample: event,
                 );
-                setState(() => _latest = event);
+                setState(() {
+                  if (event is HeartRateSample) _latest = event;
+                });
             }
           },
           onError: (Object error) => _endConnection(

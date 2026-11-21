@@ -21,7 +21,7 @@ void main() {
   test('uses configured UTC windows and keeps device batches apart', () {
     final buffer = MetricBatchBuffer(interval: const Duration(minutes: 3));
     MetricBatch add(int minute, int second, int bpm, [String id = 'watch-1']) =>
-        buffer.addHeartRate(
+        buffer.addSample(
           providerId: 'whoop',
           deviceId: id,
           sample: HeartRateSample(
@@ -46,7 +46,7 @@ void main() {
       final start = DateTime.utc(2026, 11, 21, 8);
       final attempts = <Map<String, Object?>>[];
 
-      void addReading(int minute, int bpm) => buffer.addHeartRate(
+      void addReading(int minute, int bpm) => buffer.addSample(
         providerId: 'whoop',
         deviceId: 'strap',
         sample: HeartRateSample(
@@ -106,7 +106,7 @@ void main() {
     final start = DateTime.utc(2026, 11, 21, 8);
     final attempts = <Map<String, Object?>>[];
 
-    void addReading(int minute, int bpm) => buffer.addHeartRate(
+    void addReading(int minute, int bpm) => buffer.addSample(
       providerId: 'samsung',
       deviceId: 'watch',
       sample: HeartRateSample(
@@ -159,7 +159,7 @@ void main() {
     final buffer = MetricBatchBuffer(interval: interval);
     final start = DateTime.utc(2026, 11, 21, 8);
     final attempts = <Map<String, Object?>>[];
-    buffer.addHeartRate(
+    buffer.addSample(
       providerId: 'whoop',
       deviceId: 'strap',
       sample: HeartRateSample(bpm: 70, receivedAt: start),
@@ -182,4 +182,46 @@ void main() {
     );
     expect(attempts.last, {...attempts.first, 'patient_id': 'first-patient'});
   });
+
+  test(
+    'merges temperature readings and keeps the latest cumulative steps',
+    () async {
+      const interval = Duration(seconds: 10);
+      final buffer = MetricBatchBuffer(interval: interval);
+      final start = DateTime.utc(2026, 11, 21, 8);
+      final end = start.add(interval);
+      void add(WearableSample sample) => buffer.addSample(
+        providerId: 'samsung',
+        deviceId: 'watch',
+        sample: sample,
+      );
+
+      add(TemperatureSample(celsius: 34.1, receivedAt: start));
+      add(StepCountSample(count: 1024, receivedAt: start));
+      await buffer.flushReady(
+        now: end,
+        send: (payload) async {
+          expect(payload['steps'], 1024);
+          return false;
+        },
+      );
+
+      // A watch reboot can reset the reported count.
+      add(StepCountSample(count: 0, receivedAt: end));
+      add(TemperatureSample(celsius: 34.2, receivedAt: end));
+      await buffer.flushReady(
+        now: end.add(interval),
+        send: (payload) async {
+          expect(payload['steps'], 0);
+          expect(payload['temperature'], [34.1, 34.2]);
+          expect(payload['hr'], isEmpty);
+          return true;
+        },
+      );
+      expect(
+        buffer.pendingSampleCount(providerId: 'samsung', deviceId: 'watch'),
+        0,
+      );
+    },
+  );
 }

@@ -13,7 +13,7 @@ final class SamsungWearAdapter implements WearableAdapter {
     'Pair your Galaxy Watch with this phone in Galaxy Wearable.',
     'Install and open IXLand Watch on your watch.',
     'Tap Scan for Samsung Galaxy Watch here and select your watch.',
-    'On the watch, tap Start and allow heart-rate access. Keep the watch app open to stream readings.',
+    'On the watch, tap Start and allow heart-rate and physical activity access. Keep the watch app open to stream readings.',
   ];
 
   @override
@@ -45,6 +45,11 @@ final class SamsungWearAdapter implements WearableAdapter {
           yield const WearableConnected();
         } else if (event is int && event > 0) {
           yield HeartRateSample(bpm: event, receivedAt: DateTime.now().toUtc());
+        } else if (event case {'steps': final int count} when count >= 0) {
+          yield StepCountSample(
+            count: count,
+            receivedAt: DateTime.now().toUtc(),
+          );
         }
       }
     } on PlatformException {

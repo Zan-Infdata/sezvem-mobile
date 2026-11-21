@@ -20,17 +20,23 @@ class TelemetryApi {
   static const _timeout = Duration(seconds: 10);
 
   Map<String, Object?> payloadFor(Map<String, Object?> batch) {
-    final temperatures = batch['temperature'] as List<double>;
-    final temperature = temperatures.isEmpty ? null : temperatures.last;
+    final temperatures = (batch['temperature'] as List<double>)
+        .where((celsius) => celsius >= 30 && celsius <= 45)
+        .toList();
+    final total = temperatures.fold(0.0, (sum, celsius) => sum + celsius);
+    // Keep an exact tenth from rounding up because of floating-point noise.
+    final temperature = temperatures.isEmpty
+        ? null
+        : (total / temperatures.length * 10 - 1e-9).ceil() / 10;
+    final heartRates = (batch['hr'] as List<int>)
+        .where((value) => value >= 20 && value <= 250)
+        .toList();
     return {
       'patient_id': batch['patient_id'],
       'batch_timestamp': batch['batch_timestamp'],
       'batch_number': batch['b_number'],
-      'hr': (batch['hr'] as List<int>)
-          .where((value) => value >= 20 && value <= 250)
-          .toList(),
-      if (temperature != null && temperature >= 30 && temperature <= 45)
-        'temperature': temperature,
+      if (heartRates.isNotEmpty) 'hr': heartRates,
+      if (temperature != null) 'temperature': temperature,
       if (batch['steps'] case final int steps when steps >= 0) 'steps': steps,
       if (batch['spo2'] case final int spo2 when spo2 >= 50 && spo2 <= 100)
         'spo2': spo2,

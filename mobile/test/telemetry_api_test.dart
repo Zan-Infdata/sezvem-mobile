@@ -84,4 +84,28 @@ void main() {
       isFalse,
     );
   });
+
+  test('maps temperatures to a rounded-up mean and sends cumulative steps', () {
+    final api = TelemetryApi(url: 'https://example.test/batches');
+    final batch = {
+      'patient_id': 'fixture-patient',
+      'b_number': 1,
+      'batch_timestamp': '2026-11-21T18:00:00Z',
+      'batch_interval_in_seconds': 60,
+      'hr': <int>[],
+      'temperature': [33.02, 33.08, 90.0, double.nan],
+      'steps': 0,
+    };
+    final payload = api.payloadFor(batch);
+    expect(payload['temperature'], 33.1);
+    expect(payload['steps'], 0);
+    expect(payload.containsKey('hr'), isFalse);
+    final exact = api.payloadFor({
+      ...batch,
+      'temperature': [36.6, 36.6, 36.6],
+    });
+    expect(exact['temperature'], 36.6);
+    final missing = api.payloadFor({...batch, 'temperature': <double>[]});
+    expect(missing.containsKey('temperature'), isFalse);
+  });
 }
