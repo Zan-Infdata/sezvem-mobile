@@ -144,13 +144,15 @@ final class _BatchAttempt {
         for (final window in windows) window: window.sampleCount,
       } {
     final samples = windows.expand((window) => window._samples);
+    final heartRates = samples.whereType<HeartRateSample>();
     final stepCounts = samples.whereType<StepCountSample>();
     payload = Map.unmodifiable({
       'patient_id': patientId,
       'batch_timestamp': windows.first.startedAt.toIso8601String(),
       'b_number': batchNumber,
-      'hr': List<int>.unmodifiable(
-        samples.whereType<HeartRateSample>().map((sample) => sample.bpm),
+      'hr': List<int>.unmodifiable(heartRates.map((sample) => sample.bpm)),
+      'sample_timestamps': List<String>.unmodifiable(
+        heartRates.map((sample) => sample.receivedAt.toUtc().toIso8601String()),
       ),
       'sleep_start': null,
       'sleep_end': null,

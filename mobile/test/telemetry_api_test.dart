@@ -29,6 +29,7 @@ void main() {
 
       final api = TelemetryApi(
         url: 'http://127.0.0.1:${server.port}/api/batches',
+        includeSampleTimestamps: true,
       );
       final payload = api.payloadFor({
         'patient_id': 'fixture-patient',
@@ -36,6 +37,12 @@ void main() {
         'batch_timestamp': '2026-11-21T18:00:00Z',
         'batch_interval_in_seconds': 120,
         'hr': [14, 71, 72, 251],
+        'sample_timestamps': [
+          '2026-11-21T18:00:00.100Z',
+          '2026-11-21T18:00:00.500Z',
+          '2026-11-21T18:00:01.100Z',
+          '2026-11-21T18:00:01.500Z',
+        ],
         'temperature': <double>[],
         'steps': null,
         'spo2': null,
@@ -45,6 +52,10 @@ void main() {
         'batch_number': 42,
         'batch_timestamp': '2026-11-21T18:00:00Z',
         'hr': [71, 72],
+        'sample_timestamps': [
+          '2026-11-21T18:00:00.500Z',
+          '2026-11-21T18:00:01.100Z',
+        ],
         'extra': {'batch_interval_in_seconds': 120},
       });
 
@@ -86,13 +97,17 @@ void main() {
   });
 
   test('maps temperatures to a rounded-up mean and sends cumulative steps', () {
-    final api = TelemetryApi(url: 'https://example.test/batches');
+    final api = TelemetryApi(
+      url: 'https://example.test/batches',
+      includeSampleTimestamps: true,
+    );
     final batch = {
       'patient_id': 'fixture-patient',
       'b_number': 1,
       'batch_timestamp': '2026-11-21T18:00:00Z',
       'batch_interval_in_seconds': 60,
       'hr': <int>[],
+      'sample_timestamps': <String>[],
       'temperature': [33.02, 33.08, 90.0, double.nan],
       'steps': 0,
     };
@@ -100,6 +115,12 @@ void main() {
     expect(payload['temperature'], 33.1);
     expect(payload['steps'], 0);
     expect(payload.containsKey('hr'), isFalse);
+    expect(payload['sample_timestamps'], isEmpty);
+    final legacyApi = TelemetryApi(url: 'https://example.test/batches');
+    expect(
+      legacyApi.payloadFor(batch).containsKey('sample_timestamps'),
+      isFalse,
+    );
     final exact = api.payloadFor({
       ...batch,
       'temperature': [36.6, 36.6, 36.6],
