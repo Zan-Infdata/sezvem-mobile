@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ixland_mobile/devices/connected_devices_screen.dart';
 import 'package:ixland_mobile/devices/provider_catalog.dart';
 import 'package:ixland_mobile/main.dart';
+import 'package:ixland_mobile/sync/telemetry_api.dart';
 import 'package:ixland_mobile/wearables/metric_batch_buffer.dart';
 import 'package:ixland_mobile/wearables/wearable_adapter.dart';
 import 'package:ixland_mobile/wearables/whoop/whoop_ble_adapter.dart';
@@ -47,10 +48,11 @@ void main() {
     tester,
   ) async {
     final adapter = _TestWearableAdapter();
+    final api = _TestTelemetryApi();
     await tester.pumpWidget(
       DefaultAssetBundle(
         bundle: _ProviderTestBundle(),
-        child: IxlandApp(adapters: {'whoop': adapter}),
+        child: IxlandApp(adapters: {'whoop': adapter}, telemetryApi: api),
       ),
     );
     await tester.tap(find.text('Continue'));
@@ -116,8 +118,10 @@ void main() {
     await tickBatchTimer();
     expect(find.text('Batch JSON (debug)'), findsOneWidget);
     final payload = previewPayload();
+    expect(api.posts, [payload]);
+    expect(payload['patient_id'], 'fixture-patient');
     expect(payload['hr'], [72, 73]);
-    expect(payload['batch_interval_in_seconds'], interval.inSeconds);
+    expect(payload['extra'], {'batch_interval_in_seconds': interval.inSeconds});
     expect(find.text('Samples in batch: 0'), findsOneWidget);
 
     final jam = find.widgetWithText(CheckboxListTile, 'Debug jam');
@@ -139,16 +143,20 @@ void main() {
     );
     await tickBatchTimer();
     final extended = previewPayload();
-    expect(extended['b_number'], rejected['b_number']);
+    expect(extended['batch_number'], rejected['batch_number']);
     expect(extended['hr'], [74, 75]);
-    expect(extended['batch_interval_in_seconds'], interval.inSeconds * 2);
+    expect(extended['extra'], {
+      'batch_interval_in_seconds': interval.inSeconds * 2,
+    });
     expect(find.text('Samples in batch: 2'), findsOneWidget);
+    expect(api.posts, [payload]);
 
     await tester.tap(jam);
     await tester.pump();
     expect(tester.widget<CheckboxListTile>(jam).value, isFalse);
     await tickBatchTimer();
     expect(previewPayload(), extended);
+    expect(api.posts, [payload, extended]);
     expect(find.text('Samples in batch: 0'), findsOneWidget);
 
     await tester.tap(find.text('Disconnect'));
@@ -160,6 +168,19 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     unawaited(adapter.events.close());
   });
+}
+
+class _TestTelemetryApi extends TelemetryApi {
+  _TestTelemetryApi()
+    : super(url: 'https://example.test/batches', patientId: 'fixture-patient');
+
+  final posts = <Map<String, Object?>>[];
+
+  @override
+  Future<TelemetryUploadResult> send(Map<String, Object?> payload) async {
+    posts.add(payload);
+    return (accepted: true, status: 'Uploaded (HTTP 201).');
+  }
 }
 
 class _TestWearableAdapter implements WearableAdapter {

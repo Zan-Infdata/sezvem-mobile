@@ -89,9 +89,9 @@ Flutter analysis and all nine tests passed. Both debug APKs built with matching 
 
 Connected Devices attempts to send completed UTC windows on the configured batch cadence. The buffer groups readings by provider and device, keeps pending samples after disconnect, and removes only the samples acknowledged by the sender. Pending data and batch numbers live in memory for the current app session.
 
-`_ConnectedDevicesScreenState._sendBatch` is the temporary sender. It displays the latest attempted object under **Batch JSON (debug)** and simulates acceptance by default. A future HTTP sender should return `true` after confirmed acceptance, return `false` for confirmed non-acceptance, and throw when delivery is uncertain. After a `false` result, the next attempt includes newly completed windows for that device and extends the interval from the original start. A lost response retries the original payload unchanged while additional readings continue to buffer.
+`_ConnectedDevicesScreenState._sendBatch` displays the latest attempted object under **Batch JSON (debug)** and calls the telemetry gateway. The sender returns `true` after confirmed acceptance, returns `false` for confirmed non-acceptance, and throws when delivery is uncertain. After confirmed non-acceptance, the next attempt includes newly completed windows for that device and extends the interval from the original start. A lost response retries the original payload unchanged while additional readings continue to buffer.
 
-The preview shows `null` for `patient_id` and `steps` until sign-in supplies a patient ID and the adapter supplies a step count. It uses an empty temperature array and `null` for `spo2`, `sleep_start`, and `sleep_end`. The staging payload still needs a patient ID and an agreed step count or missing-data policy.
+The upload requires a configured `BATCH_PATIENT_ID` while sign-in is a placeholder. Missing metric fields are omitted from the live request.
 
 `flutter test` covers the preview and simulates confirmed rejection and a lost response.
 
@@ -99,11 +99,11 @@ The preview shows `null` for `patient_id` and `steps` until sign-in supplies a p
 
 Set a positive whole number with `BATCH_UPLOAD_INTERVAL_SECONDS`. The app defaults to 60 seconds if the value is absent or invalid. Rerun the app after changing the build-time setting.
 
-From `mobile/`, run `flutter run --dart-define=BATCH_UPLOAD_INTERVAL_SECONDS=10` and connect a wearable. When the next 10-second window closes, check that **Batch JSON (debug)** shows `batch_interval_in_seconds` of 10 and the pending sample count drops for the accepted readings. The widget test also verifies the override with `flutter test --dart-define=BATCH_UPLOAD_INTERVAL_SECONDS=10 test/device_flow_test.dart`.
+From `mobile/`, run `flutter run --dart-define=BATCH_UPLOAD_INTERVAL_SECONDS=10` and connect a wearable. When the next 10-second window closes, check that **Batch JSON (debug)** shows `extra.batch_interval_in_seconds` of 10. The widget test also verifies the override with `flutter test --dart-define=BATCH_UPLOAD_INTERVAL_SECONDS=10 test/device_flow_test.dart`.
 
 ## Debug jam
 
-After the first JSON preview appears, check **Debug jam** below it to simulate an API that receives no batches. The preview updates on each attempt, while the debug sender returns `false` so the buffer retains the readings. Keep the wearable streaming through two windows and check that the pending sample count grows and the attempted payload spans both windows. Uncheck **Debug jam** to let the next scheduled attempt clear the readings it accepts. The Connected Devices widget test exercises this flow with synthetic heart-rate readings.
+After the first JSON preview appears, check **Debug jam** below it to simulate an API that receives no batches. The preview updates on each attempt and the app skips the HTTP request. Keep the wearable streaming through two windows and check that the pending sample count grows and the attempted payload spans both windows. Uncheck **Debug jam** to let the next scheduled attempt upload and clear the readings the API accepts. The Connected Devices widget test exercises this flow with synthetic heart-rate readings.
 
 ## Companion overlay test
 
@@ -183,3 +183,17 @@ flutter run
 On a physical Android phone, tap **TEST**, grant access, and check that the companion walks in over the home screen. Open another app and confirm you can tap and scroll around the character. Try each input from the table, and check that other inputs do nothing while an action runs, especially during the two sad seconds. Hold with the phone's sound on to hear the inflating sound. Check the backflip and inflation aren't clipped and the character doesn't jump when the window resizes. Rotate the phone while it's visible and check it stays on screen. Leave IXLand in the background and check that the companion walks to a new spot every 4 to 8 seconds without leaving the screen. Swipe it away and check it walks back in within 8 seconds. Open IXLand and check it stops moving. Use **Stop** in the notification and check the companion and the notification go away.
 
 Flutter analysis and all 28 tests passed, and the debug APK built. The companion hasn't been run on a device yet.
+
+## Live telemetry API
+
+From `mobile/`, run the app with the backend-assigned test patient ID. `BATCH_API_URL` is the full POST URL, including `/batches`. The deployed endpoint below is the default. Configure a different full URL to use a test server. Rebuild or rerun after changing a build-time setting. [Deployed API documentation](https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/docs)
+
+```sh
+flutter run \
+  --dart-define=BATCH_API_URL=https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/batches \
+  --dart-define=BATCH_PATIENT_ID="$IXLAND_TEST_PATIENT_ID"
+```
+
+**Batch JSON (debug)** displays the POST body, with the batch duration in `extra.batch_interval_in_seconds`. The status below the title shows storage, rejection, uncertain delivery, or a missing setting. A jammed or unconfigured sender keeps the buffer. After an uncertain delivery, the sender retries the same body and batch number, even if Debug jam is switched on and off in between. The queue is in memory for the current session.
+
+Run `flutter test` and `flutter analyze` for fixture verification. `telemetry_api_test.dart` uses a loopback HTTP server to verify the method, URL path, JSON, acknowledgments, and error handling. `device_flow_test.dart` verifies that the preview and POST body match, that jammed batches never reach the gateway, and that the merged batch uploads once the jam clears.

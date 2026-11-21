@@ -134,6 +134,13 @@ void main() {
     );
 
     addReading(6, 73);
+    await buffer.flushReady(
+      now: start.add(const Duration(minutes: 10)),
+      send: (payload) async {
+        expect(payload, same(attempts.first));
+        return false; // The debug jam blocks this retry before it reaches the API.
+      },
+    );
     await accept(10);
     expect(attempts.last, same(attempts.first));
     expect(attempts.last['hr'], [70]);

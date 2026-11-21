@@ -1,6 +1,14 @@
 # Mobile interfaces and backend handoff
 
-The wearable upload fields below are the requested mobile-to-backend payload. The endpoint path, field semantics, and response codes are proposed for alignment with the backend developer. The mobile team can test the flow against a fake gateway.
+The mobile app maps its buffered measurements to the deployed telemetry schema. The proposed batch and recovery interfaces below describe the broader project handoff.
+
+## Live telemetry upload
+
+The deployed API accepts `POST /batches` under its `/api` base URL. Its required fields are `patient_id` as a string, `batch_timestamp` as an ISO 8601 datetime, and `batch_number` as a nonnegative integer. The prototype has no authentication yet. It returns `201` when stored, `409` when that number already exists for the patient, and `422` for invalid data. [Deployed API documentation](https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/docs)
+
+The mobile app posts the exact payload shown in **Batch JSON (debug)**. It maps `b_number` to `batch_number`, sends BPM values in the API's 20–250 range, and omits unavailable metrics. If available, it sends the current step count and the latest temperature as a scalar. It includes the batch duration and any available sleep timestamps under `extra`. The current backend model reads the optional `hrv` field, and calculating HRV from sleep timestamps remains a separate backend change.
+
+Configure the full POST endpoint with `BATCH_API_URL` and the backend-assigned ID with `BATCH_PATIENT_ID`. Live batch numbers start from the current Unix time in microseconds and increment in memory. The app preserves the body on an uncertain outcome. It accepts a documented duplicate response only for a batch that previously had an uncertain outcome. See [mobile verification](mobile-implementation.md#live-telemetry-api).
 
 ## Wearable metric upload
 

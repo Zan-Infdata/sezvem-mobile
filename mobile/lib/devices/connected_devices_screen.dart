@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../companion/companion_overlay.dart';
 import '../companion/companion_wander_test.dart';
+import '../sync/telemetry_api.dart';
 import '../wearables/metric_batch_buffer.dart';
 import '../wearables/wearable_adapter.dart';
 import 'device_scan_screen.dart';
@@ -18,18 +19,25 @@ class ConnectedDevicesScreen extends StatefulWidget {
     required this.adapters,
     required this.batchInterval,
     this.companion = const AndroidCompanionOverlay(),
+    this.telemetryApi,
   });
 
   final Map<String, WearableAdapter> adapters;
   final Duration batchInterval;
   final CompanionOverlay companion;
+  final TelemetryApi? telemetryApi;
 
   @override
   State<ConnectedDevicesScreen> createState() => _ConnectedDevicesScreenState();
 }
 
 class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
-  late final _batchBuffer = MetricBatchBuffer(interval: widget.batchInterval);
+  late final _batchBuffer = MetricBatchBuffer(
+    interval: widget.batchInterval,
+    firstBatchNumber: widget.telemetryApi == null
+        ? 1
+        : DateTime.now().microsecondsSinceEpoch,
+  );
   late Timer _batchTimer;
   StreamSubscription<WearableEvent>? _connection;
   String? _providerId;
@@ -39,6 +47,7 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
   HeartRateSample? _latest;
   String? _error;
   String? _batchJson;
+  String? _batchUploadStatus;
   bool _debugJam = false;
   late final _companionWander = CompanionWanderTest(
     companion: widget.companion,
@@ -74,9 +83,27 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
 
   Future<bool> _sendBatch(Map<String, Object?> payload) async {
     if (!mounted) return false;
-    final json = const JsonEncoder.withIndent('  ').convert(payload);
-    setState(() => _batchJson = json);
-    return !_debugJam;
+    final api = widget.telemetryApi;
+    final body = api?.payloadFor(payload) ?? payload;
+    final jammed = _debugJam;
+    setState(() {
+      _batchJson = const JsonEncoder.withIndent('  ').convert(body);
+      _batchUploadStatus = jammed
+          ? 'Debug jam active. Batch kept.'
+          : api == null
+          ? 'Debug preview.'
+          : 'Sending…';
+    });
+    if (jammed) return false;
+    if (api == null) return true;
+    try {
+      final result = await api.send(body);
+      if (mounted) setState(() => _batchUploadStatus = result.status);
+      return result.accepted;
+    } on TelemetryDeliveryUncertain catch (error) {
+      if (mounted) setState(() => _batchUploadStatus = error.message);
+      rethrow;
+    }
   }
 
   Future<void> _addDevice() async {
@@ -228,6 +255,9 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
                 if (batchJson != null) ...[
                   ExpansionTile(
                     title: const Text('Batch JSON (debug)'),
+                    subtitle: _batchUploadStatus == null
+                        ? null
+                        : Text(_batchUploadStatus!),
                     initiallyExpanded: true,
                     childrenPadding: const EdgeInsets.all(16),
                     expandedAlignment: Alignment.centerLeft,

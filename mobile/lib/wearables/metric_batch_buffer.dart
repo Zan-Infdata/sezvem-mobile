@@ -18,7 +18,8 @@ final class MetricBatch {
 }
 
 final class MetricBatchBuffer {
-  MetricBatchBuffer({required this.interval}) {
+  MetricBatchBuffer({required this.interval, int firstBatchNumber = 1})
+    : _nextBatchNumber = firstBatchNumber {
     if (interval.inSeconds < 1) {
       throw ArgumentError.value(interval, 'interval', 'Must be positive');
     }
@@ -26,7 +27,7 @@ final class MetricBatchBuffer {
 
   final Duration interval;
   final _connections = <(String, String), _ConnectionBuffer>{};
-  int _nextBatchNumber = 1;
+  int _nextBatchNumber;
   bool _flushing = false;
 
   DateTime windowStart(DateTime time) {
@@ -97,9 +98,9 @@ final class MetricBatchBuffer {
           connection.unconfirmed = attempt;
           continue;
         }
-        connection.unconfirmed = null;
         if (!accepted) continue;
 
+        connection.unconfirmed = null;
         connection.batchNumber = null;
         for (final entry in attempt.sampleCounts.entries) {
           final window = entry.key;
