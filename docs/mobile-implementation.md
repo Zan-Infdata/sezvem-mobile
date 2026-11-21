@@ -282,3 +282,38 @@ In a debug build, open **Connected devices → Settings** and tap the moon icon 
 The replay uses a separate in-memory batch buffer and the regular telemetry payload mapper. Its local sender captures the session batch for display and acknowledges the other synthetic batches in memory. It does not use the active patient ID or send HTTP requests.
 
 `flutter test test/simulated_night_test.dart` checks the average, the exact boundaries, and the JSON fields using a fixed local date.
+
+## Kotlin 2.3 build upgrade
+
+The Android build uses the Kotlin Gradle plugin 2.3.21 in `mobile/android/settings.gradle.kts`. Google's LiteRT-LM Android library (`com.google.ai.edge.litertlm:litertlm-android` 0.19.1), planned for the on-device companion model, is compiled against Kotlin 2.4 metadata, and the earlier 2.1 compiler cannot read it. Kotlin 2.3 rejects the old `kotlinOptions { jvmTarget = ... }` block, so `mobile/android/app/build.gradle.kts` and `mobile/android/wear/build.gradle.kts` set the same JVM 11 target through `kotlin { compilerOptions { ... } }`. The Android Gradle plugin stays at 8.9.1 and Gradle at 8.12.
+
+The commit before the upgrade is tagged `pre-kotlin-upgrade`. To verify, run `flutter analyze`, `flutter test`, and `flutter build apk --debug` in `mobile/`, and `./gradlew :wear:assembleDebug` in `mobile/android/`. A temporary build that added the LiteRT-LM dependency and constructed an `Engine` compiled with this setup. The dependency itself is added with the model harness.
+
+## On-device Gemma model files
+
+The companion assistant uses Gemma 4 E2B in the LiteRT-LM format, the file `gemma-4-E2B-it.litertlm` (about 2.59 GB, Apache 2.0, not gated) from [litert-community/gemma-4-E2B-it-litert-lm](https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm). Model files are too large for git and the APK. Keep them in the `models/` folder next to the repository checkouts, outside git:
+
+```text
+ada_hack/
+├── ixland/          Codex checkout (master)
+├── ixland-claude/   Claude worktree
+└── models/
+    └── gemma-4-E2B-it.litertlm
+```
+
+Download the file once from the `ada_hack/` folder:
+
+```sh
+mkdir -p models
+curl -L -C - -o models/gemma-4-E2B-it.litertlm \
+  https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm
+```
+
+`-C -` resumes an interrupted download. During development, copy the model to the phone app's external files folder with ADB. That folder needs no storage permission and is deleted when the app is uninstalled. Both checkouts build the same application ID and share this folder on the phone.
+
+```sh
+adb shell mkdir -p /sdcard/Android/data/com.ixland.ixland_mobile/files/models
+adb push models/gemma-4-E2B-it.litertlm /sdcard/Android/data/com.ixland.ixland_mobile/files/models/
+```
+
+Check free phone storage first with `adb shell df -h /data`. E2B needs roughly 2.6 GB of storage and several GB of free RAM while loaded. The larger E4B file (3.66 GB) is not used on the test phone.
