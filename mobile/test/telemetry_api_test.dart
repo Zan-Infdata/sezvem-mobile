@@ -29,9 +29,9 @@ void main() {
 
       final api = TelemetryApi(
         url: 'http://127.0.0.1:${server.port}/api/batches',
-        patientId: 'fixture-patient',
       );
       final payload = api.payloadFor({
+        'patient_id': 'fixture-patient',
         'b_number': 42,
         'batch_timestamp': '2026-11-21T18:00:00Z',
         'batch_interval_in_seconds': 120,
@@ -66,21 +66,22 @@ void main() {
         throwsA(isA<TelemetryDeliveryUncertain>()),
       );
       status = HttpStatus.conflict;
+      expect(
+        (await api.send({...payload, 'patient_id': 'other-patient'})).accepted,
+        isFalse,
+      );
       expect((await api.send(payload)).accepted, isTrue);
       expect(requests.last.body, payload);
     },
   );
 
   test('requires explicit patient and endpoint configuration', () async {
-    final noPatient = TelemetryApi(
-      url: 'https://example.test/batches',
-      patientId: '',
-    );
-    final noEndpoint = TelemetryApi(
-      url: 'invalid',
-      patientId: 'fixture-patient',
-    );
+    final noPatient = TelemetryApi(url: 'https://example.test/batches');
+    final noEndpoint = TelemetryApi(url: 'invalid');
     expect((await noPatient.send({})).accepted, isFalse);
-    expect((await noEndpoint.send({})).accepted, isFalse);
+    expect(
+      (await noEndpoint.send({'patient_id': 'fixture-patient'})).accepted,
+      isFalse,
+    );
   });
 }

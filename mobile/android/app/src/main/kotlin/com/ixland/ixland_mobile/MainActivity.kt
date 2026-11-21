@@ -1,23 +1,51 @@
 package com.ixland.ixland_mobile
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.StandardMethodCodec
 
 class MainActivity : FlutterActivity() {
     private var pendingBluetoothPermission: MethodChannel.Result? = null
     private var wearBridge: WearBridge? = null
     private var companionBridge: CompanionBridge? = null
+    private var patientSettingsChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        wearBridge = WearBridge(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
-        companionBridge = CompanionBridge(this, flutterEngine.dartExecutor.binaryMessenger)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ixland/bluetooth")
+        val messenger = flutterEngine.dartExecutor.binaryMessenger
+        wearBridge = WearBridge(applicationContext, messenger)
+        companionBridge = CompanionBridge(this, messenger)
+        val patientPrefs = getSharedPreferences("patient_settings", Context.MODE_PRIVATE)
+        patientSettingsChannel = MethodChannel(
+            messenger,
+            "ixland/patient_settings",
+            StandardMethodCodec.INSTANCE,
+            messenger.makeBackgroundTaskQueue()
+        ).apply {
+            setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getPatientId" -> result.success(patientPrefs.getString("patient_id", null))
+                    "setPatientId" -> {
+                        val id = call.arguments as? String
+                        if (id.isNullOrEmpty()) {
+                            result.error("invalid_patient_id", "Enter a patient ID.", null)
+                        } else if (patientPrefs.edit().putString("patient_id", id).commit()) {
+                            result.success(null)
+                        } else {
+                            result.error("save_failed", "Could not save patient ID.", null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
+        MethodChannel(messenger, "ixland/bluetooth")
             .setMethodCallHandler { call, result ->
                 if (call.method == "requestScanPermissions") {
                     requestBluetoothPermissions(result)
@@ -32,6 +60,8 @@ class MainActivity : FlutterActivity() {
         wearBridge = null
         companionBridge?.close()
         companionBridge = null
+        patientSettingsChannel?.setMethodCallHandler(null)
+        patientSettingsChannel = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../companion/companion_overlay.dart';
 import '../companion/companion_wander_test.dart';
+import '../settings/patient_settings.dart';
 import '../settings/settings_screen.dart';
 import '../sync/telemetry_api.dart';
 import '../wearables/metric_batch_buffer.dart';
@@ -19,12 +20,14 @@ class ConnectedDevicesScreen extends StatefulWidget {
     super.key,
     required this.adapters,
     required this.batchInterval,
+    required this.patientSettings,
     this.companion = const AndroidCompanionOverlay(),
     this.telemetryApi,
   });
 
   final Map<String, WearableAdapter> adapters;
   final Duration batchInterval;
+  final PatientSettings patientSettings;
   final CompanionOverlay companion;
   final TelemetryApi? telemetryApi;
 
@@ -58,6 +61,7 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
   @override
   void initState() {
     super.initState();
+    widget.patientSettings.addListener(_assignUnassignedReadings);
     // Moves the companion around while the app is in the background.
     _companionLifecycle = AppLifecycleListener(
       onHide: _companionWander.start,
@@ -72,6 +76,11 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
       );
       unawaited(_flushBatches());
     });
+  }
+
+  void _assignUnassignedReadings() {
+    final patientId = widget.patientSettings.patientId;
+    if (patientId != null) _batchBuffer.assignUnassignedReadings(patientId);
   }
 
   Future<void> _flushBatches() async {
@@ -139,6 +148,7 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
                 setState(() => _connected = true);
               case HeartRateSample():
                 _batchBuffer.addHeartRate(
+                  patientId: widget.patientSettings.patientId,
                   providerId: provider.id,
                   deviceId: device.id,
                   sample: event,
@@ -207,6 +217,7 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
 
   @override
   void dispose() {
+    widget.patientSettings.removeListener(_assignUnassignedReadings);
     _companionLifecycle.dispose();
     _companionWander.stop();
     _batchTimer.cancel();
@@ -235,7 +246,10 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
             icon: const Icon(Icons.settings),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => SettingsScreen(companion: widget.companion),
+                builder: (_) => SettingsScreen(
+                  companion: widget.companion,
+                  patientSettings: widget.patientSettings,
+                ),
               ),
             ),
           ),

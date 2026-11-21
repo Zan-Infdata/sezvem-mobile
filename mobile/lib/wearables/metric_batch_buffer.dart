@@ -26,7 +26,7 @@ final class MetricBatchBuffer {
   }
 
   final Duration interval;
-  final _connections = <(String, String), _ConnectionBuffer>{};
+  final _connections = <(String?, String, String), _ConnectionBuffer>{};
   int _nextBatchNumber;
   bool _flushing = false;
 
@@ -40,12 +40,14 @@ final class MetricBatchBuffer {
   }
 
   MetricBatch addHeartRate({
+    String? patientId,
     required String providerId,
     required String deviceId,
     required HeartRateSample sample,
   }) {
     final startedAt = windowStart(sample.receivedAt);
     final connection = _connections.putIfAbsent((
+      patientId,
       providerId,
       deviceId,
     ), _ConnectionBuffer.new);
@@ -61,12 +63,23 @@ final class MetricBatchBuffer {
     required String providerId,
     required String deviceId,
   }) {
-    final windows = _connections[(providerId, deviceId)]?.windows.values;
-    return windows?.fold<int>(
-          0,
-          (count, window) => count + window.sampleCount,
-        ) ??
-        0;
+    return _connections.entries
+        .where(
+          (entry) => entry.key.$2 == providerId && entry.key.$3 == deviceId,
+        )
+        .expand((entry) => entry.value.windows.values)
+        .fold(0, (count, window) => count + window.sampleCount);
+  }
+
+  /// Called when the first patient ID is set, before adding readings for it.
+  void assignUnassignedReadings(String patientId) {
+    final unassigned = _connections.keys
+        .where((key) => key.$1 == null)
+        .toList();
+    for (final key in unassigned) {
+      final connection = _connections.remove(key)!;
+      _connections[(patientId, key.$2, key.$3)] = connection;
+    }
   }
 
   Future<void> flushReady({
@@ -88,7 +101,7 @@ final class MetricBatchBuffer {
           if (windows.isEmpty) continue;
           windows.sort((a, b) => a.startedAt.compareTo(b.startedAt));
           final number = connection.batchNumber ??= _nextBatchNumber++;
-          attempt = _BatchAttempt(windows, number);
+          attempt = _BatchAttempt(windows, number, entry.key.$1);
         }
 
         final bool accepted;
@@ -125,10 +138,10 @@ final class _ConnectionBuffer {
 }
 
 final class _BatchAttempt {
-  _BatchAttempt(List<MetricBatch> windows, int batchNumber)
+  _BatchAttempt(List<MetricBatch> windows, int batchNumber, String? patientId)
     : sampleCounts = {for (final window in windows) window: window.sampleCount},
       payload = Map.unmodifiable({
-        'patient_id': null,
+        'patient_id': patientId,
         'batch_timestamp': windows.first.startedAt.toIso8601String(),
         'b_number': batchNumber,
         'hr': List<int>.unmodifiable(

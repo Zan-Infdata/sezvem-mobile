@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../settings/patient_settings.dart';
+
 typedef TelemetryUploadResult = ({bool accepted, String status});
 
 final class TelemetryDeliveryUncertain implements Exception {
@@ -11,20 +13,17 @@ final class TelemetryDeliveryUncertain implements Exception {
 }
 
 class TelemetryApi {
-  TelemetryApi({required String url, required this.patientId})
-    : _endpoint = Uri.tryParse(url);
+  TelemetryApi({required String url}) : _endpoint = Uri.tryParse(url);
 
   final Uri? _endpoint;
-  final String patientId;
-  final _unconfirmed = <int>{};
+  final _unconfirmed = <(String, int)>{};
   static const _timeout = Duration(seconds: 10);
-  static final _validPatientId = RegExp(r'^[A-Za-z0-9_-]{1,128}$');
 
   Map<String, Object?> payloadFor(Map<String, Object?> batch) {
     final temperatures = batch['temperature'] as List<double>;
     final temperature = temperatures.isEmpty ? null : temperatures.last;
     return {
-      'patient_id': patientId.isEmpty ? null : patientId,
+      'patient_id': batch['patient_id'],
       'batch_timestamp': batch['batch_timestamp'],
       'batch_number': batch['b_number'],
       'hr': (batch['hr'] as List<int>)
@@ -44,10 +43,11 @@ class TelemetryApi {
   }
 
   Future<TelemetryUploadResult> send(Map<String, Object?> payload) async {
-    if (!_validPatientId.hasMatch(patientId)) {
+    final patientId = payload['patient_id'];
+    if (patientId is! String || !isValidPatientId(patientId)) {
       return (
         accepted: false,
-        status: 'Set a valid BATCH_PATIENT_ID to upload.',
+        status: 'Set a Patient ID in Settings to upload.',
       );
     }
     final endpoint = _endpoint;
@@ -59,7 +59,7 @@ class TelemetryApi {
       return (accepted: false, status: 'Set a valid BATCH_API_URL to upload.');
     }
 
-    final number = payload['batch_number'] as int;
+    final batchKey = (patientId, payload['batch_number'] as int);
     final body = utf8.encode(jsonEncode(payload));
     final client = HttpClient()..connectionTimeout = _timeout;
     var deliveryStarted = false;
@@ -73,36 +73,39 @@ class TelemetryApi {
       final response = await request.close().timeout(_timeout);
       final status = response.statusCode;
       if (status == HttpStatus.created) {
-        _unconfirmed.remove(number);
+        _unconfirmed.remove(batchKey);
         return (accepted: true, status: 'Uploaded (HTTP 201).');
       }
-      if (status == HttpStatus.conflict && _unconfirmed.contains(number)) {
+      if (status == HttpStatus.conflict && _unconfirmed.contains(batchKey)) {
         final body = await utf8.decoder.bind(response).join().timeout(_timeout);
         final error = jsonDecode(body);
         if (error case {'error': {'code': 'conflict'}}) {
-          _unconfirmed.remove(number);
+          _unconfirmed.remove(batchKey);
           return (accepted: true, status: 'Upload already stored (HTTP 409).');
         }
       }
       if (status >= 500 || status == HttpStatus.requestTimeout) {
-        _unconfirmed.add(number);
+        _unconfirmed.add(batchKey);
         throw TelemetryDeliveryUncertain('Upload unconfirmed (HTTP $status).');
       }
       return (accepted: false, status: 'Upload rejected (HTTP $status).');
     } on TimeoutException {
-      return _transportFailure(number, deliveryStarted);
+      return _transportFailure(batchKey, deliveryStarted);
     } on IOException {
-      return _transportFailure(number, deliveryStarted);
+      return _transportFailure(batchKey, deliveryStarted);
     } on FormatException {
-      return _transportFailure(number, deliveryStarted);
+      return _transportFailure(batchKey, deliveryStarted);
     } finally {
       client.close(force: true);
     }
   }
 
-  TelemetryUploadResult _transportFailure(int number, bool deliveryStarted) {
+  TelemetryUploadResult _transportFailure(
+    (String, int) batchKey,
+    bool deliveryStarted,
+  ) {
     if (deliveryStarted) {
-      _unconfirmed.add(number);
+      _unconfirmed.add(batchKey);
       throw const TelemetryDeliveryUncertain('Upload unconfirmed. Retrying.');
     }
     return (accepted: false, status: 'API unreachable. Batch kept.');

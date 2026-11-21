@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ixland_mobile/devices/connected_devices_screen.dart';
 import 'package:ixland_mobile/devices/provider_catalog.dart';
 import 'package:ixland_mobile/main.dart';
+import 'package:ixland_mobile/settings/patient_settings.dart';
 import 'package:ixland_mobile/sync/telemetry_api.dart';
 import 'package:ixland_mobile/wearables/metric_batch_buffer.dart';
 import 'package:ixland_mobile/wearables/wearable_adapter.dart';
@@ -14,7 +15,12 @@ import 'package:ixland_mobile/wearables/whoop/whoop_ble_adapter.dart';
 
 void main() {
   testWidgets('shows WHOOP setup steps before scanning', (tester) async {
-    await tester.pumpWidget(IxlandApp(adapters: {'whoop': WhoopBleAdapter()}));
+    await tester.pumpWidget(
+      IxlandApp(
+        adapters: {'whoop': WhoopBleAdapter()},
+        patientSettings: PatientSettings(),
+      ),
+    );
     expect(find.text('Sign in'), findsOneWidget);
 
     await tester.tap(find.text('Continue'));
@@ -49,10 +55,19 @@ void main() {
   ) async {
     final adapter = _TestWearableAdapter();
     final api = _TestTelemetryApi();
+    final patient = PatientSettings(defaultId: 'fixture-patient');
+    const channel = MethodChannel('ixland/patient_settings');
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (call) async => null);
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
     await tester.pumpWidget(
       DefaultAssetBundle(
         bundle: _ProviderTestBundle(),
-        child: IxlandApp(adapters: {'whoop': adapter}, telemetryApi: api),
+        child: IxlandApp(
+          adapters: {'whoop': adapter},
+          patientSettings: patient,
+          telemetryApi: api,
+        ),
       ),
     );
     await tester.tap(find.text('Continue'));
@@ -151,12 +166,19 @@ void main() {
     expect(find.text('Samples in batch: 2'), findsOneWidget);
     expect(api.posts, [payload]);
 
+    await patient.save('next-patient');
+    adapter.events.add(
+      HeartRateSample(bpm: 76, receivedAt: start.add(interval * 2)),
+    );
+    await tester.pump();
     await tester.tap(jam);
     await tester.pump();
     expect(tester.widget<CheckboxListTile>(jam).value, isFalse);
     await tickBatchTimer();
-    expect(previewPayload(), extended);
-    expect(api.posts, [payload, extended]);
+    final next = previewPayload();
+    expect(api.posts, [payload, extended, next]);
+    expect(next['patient_id'], 'next-patient');
+    expect(next['hr'], [76]);
     expect(find.text('Samples in batch: 0'), findsOneWidget);
 
     await tester.tap(find.text('Disconnect'));
@@ -171,8 +193,7 @@ void main() {
 }
 
 class _TestTelemetryApi extends TelemetryApi {
-  _TestTelemetryApi()
-    : super(url: 'https://example.test/batches', patientId: 'fixture-patient');
+  _TestTelemetryApi() : super(url: 'https://example.test/batches');
 
   final posts = <Map<String, Object?>>[];
 

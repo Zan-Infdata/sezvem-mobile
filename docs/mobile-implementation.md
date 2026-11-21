@@ -91,7 +91,7 @@ Connected Devices attempts to send completed UTC windows on the configured batch
 
 `_ConnectedDevicesScreenState._sendBatch` displays the latest attempted object under **Batch JSON (debug)** and calls the telemetry gateway. The sender returns `true` after confirmed acceptance, returns `false` for confirmed non-acceptance, and throws when delivery is uncertain. After confirmed non-acceptance, the next attempt includes newly completed windows for that device and extends the interval from the original start. A lost response retries the original payload unchanged while additional readings continue to buffer.
 
-The upload requires a configured `BATCH_PATIENT_ID` while sign-in is a placeholder. Missing metric fields are omitted from the live request.
+The upload requires a configured [Patient ID](#patient-id-settings) while sign-in is a placeholder. Missing metric fields are omitted from the live request.
 
 `flutter test` covers the preview and simulates confirmed rejection and a lost response.
 
@@ -201,7 +201,7 @@ Flutter analysis and all 46 tests passed, and the debug APK built. The companion
 
 ## Live telemetry API
 
-From `mobile/`, run the app with the backend-assigned test patient ID. `BATCH_API_URL` is the full POST URL, including `/batches`. The deployed endpoint below is the default. Configure a different full URL to use a test server. Rebuild or rerun after changing a build-time setting. [Deployed API documentation](https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/docs)
+From `mobile/`, run the app and enter your test patient ID in **Settings**. You can also supply an initial ID when running the app. `BATCH_API_URL` is the full POST URL, including `/batches`. The deployed endpoint below is the default. Configure a different full URL to use a test server. Rebuild or rerun after changing a build-time setting. [Deployed API documentation](https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/docs)
 
 ```sh
 flutter run \
@@ -212,3 +212,13 @@ flutter run \
 **Batch JSON (debug)** displays the POST body, with the batch duration in `extra.batch_interval_in_seconds`. The status below the title shows storage, rejection, uncertain delivery, or a missing setting. A jammed or unconfigured sender keeps the buffer. After an uncertain delivery, the sender retries the same body and batch number, even if Debug jam is switched on and off in between. The queue is in memory for the current session.
 
 Run `flutter test` and `flutter analyze` for fixture verification. `telemetry_api_test.dart` uses a loopback HTTP server to verify the method, URL path, JSON, acknowledgments, and error handling. `device_flow_test.dart` verifies that the preview and POST body match, that jammed batches never reach the gateway, and that the merged batch uploads once the jam clears.
+
+## Patient ID settings
+
+On **Connected devices → Settings**, the **Patient ID** field shows the active ID. Edit it and tap **Save patient ID** to apply it, or tap **Create patient** to generate and save a random ID beginning with `test-`. The `createPatient()` function in `mobile/lib/settings/patient_settings.dart` currently generates the ID locally. Replace its implementation when the backend provides a patient creation endpoint.
+
+Android stores the saved value in private app preferences via the `ixland/patient_settings` channel. A saved value takes precedence over the optional `BATCH_PATIENT_ID` build-time default. IDs accept 1–128 ASCII letters, digits, hyphens, and underscores. An invalid edit leaves the last saved ID active.
+
+New readings use the saved ID immediately. The first ID also claims readings buffered before any ID was configured. Readings already assigned to an ID keep it through upload retries. The app groups batches by patient, provider, and device to keep their samples separate.
+
+To check on the phone, save a test ID, restart the app, and reopen Settings. Connect a wearable and compare the saved value with `patient_id` in the debug JSON. **Debug jam** lets you check the payload while skipping the upload. Flutter tests verify edits, local creation, restoration through a mocked preferences channel, and separate uploads across a change of patient ID.

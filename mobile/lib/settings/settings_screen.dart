@@ -7,15 +7,18 @@ import '../companion/companion_overlay.dart';
 import '../companion/companion_state.dart';
 import '../companion/styles/companion_style.dart';
 import '../companion/styles/companion_styles.dart';
+import 'patient_settings.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
     required this.companion,
+    required this.patientSettings,
     this.styles = companionStyles,
   });
 
   final CompanionOverlay companion;
+  final PatientSettings patientSettings;
 
   /// The companion styles to choose from.
   final List<CompanionStyle> styles;
@@ -26,11 +29,54 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   String? _styleId;
+  late final _patientId = TextEditingController(
+    text: widget.patientSettings.patientId,
+  );
+  bool _savingPatient = false;
+  String? _patientError;
 
   @override
   void initState() {
     super.initState();
     _loadStyle();
+  }
+
+  @override
+  void dispose() {
+    _patientId.dispose();
+    super.dispose();
+  }
+
+  Future<void> _savePatientId({bool create = false}) async {
+    if (_savingPatient) return;
+    final editedId = _patientId.text.trim();
+    if (!create && !isValidPatientId(editedId)) {
+      setState(() {
+        _patientError = 'Use 1–128 letters, digits, hyphens, or underscores.';
+      });
+      return;
+    }
+    setState(() {
+      _savingPatient = true;
+      _patientError = null;
+    });
+    try {
+      final id = create ? await createPatient() : editedId;
+      await widget.patientSettings.save(id);
+      if (!mounted) return;
+      _patientId.text = id;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Patient ID saved.')));
+    } on PlatformException {
+      if (mounted) setState(() => _patientError = 'Could not save patient ID.');
+    } on MissingPluginException {
+      if (mounted) {
+        setState(() => _patientError = 'Patient settings require Android.');
+      }
+    } finally {
+      if (mounted) setState(() => _savingPatient = false);
+    }
   }
 
   Future<void> _loadStyle() async {
@@ -96,6 +142,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Patient ID',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _patientId,
+                  decoration: InputDecoration(
+                    hintText: 'Enter a patient ID',
+                    errorText: _patientError,
+                  ),
+                  enabled: !_savingPatient,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  onSubmitted: (_) => _savePatientId(),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    FilledButton(
+                      onPressed: _savingPatient ? null : _savePatientId,
+                      child: const Text('Save patient ID'),
+                    ),
+                    OutlinedButton(
+                      onPressed: _savingPatient
+                          ? null
+                          : () => _savePatientId(create: true),
+                      child: const Text('Create patient'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

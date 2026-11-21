@@ -153,4 +153,33 @@ void main() {
     expect(attempts.last['hr'], [71, 73]);
     expect(attempts.last['b_number'], 2);
   });
+
+  test('assigns buffered readings to the first patient ID', () async {
+    final interval = const Duration(seconds: 10);
+    final buffer = MetricBatchBuffer(interval: interval);
+    final start = DateTime.utc(2026, 11, 21, 8);
+    final attempts = <Map<String, Object?>>[];
+    buffer.addHeartRate(
+      providerId: 'whoop',
+      deviceId: 'strap',
+      sample: HeartRateSample(bpm: 70, receivedAt: start),
+    );
+    await buffer.flushReady(
+      now: start.add(interval),
+      send: (payload) async {
+        attempts.add(payload);
+        return false;
+      },
+    );
+    expect(attempts.single['patient_id'], isNull);
+    buffer.assignUnassignedReadings('first-patient');
+    await buffer.flushReady(
+      now: start.add(interval),
+      send: (payload) async {
+        attempts.add(payload);
+        return true;
+      },
+    );
+    expect(attempts.last, {...attempts.first, 'patient_id': 'first-patient'});
+  });
 }

@@ -1,27 +1,39 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'companion/companion_overlay_app.dart';
 import 'devices/connected_devices_screen.dart';
+import 'settings/patient_settings.dart';
 import 'sync/telemetry_api.dart';
 import 'wearables/samsung/samsung_wear_adapter.dart';
 import 'wearables/wearable_adapter.dart';
 import 'wearables/whoop/whoop_ble_adapter.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final patientSettings = PatientSettings(
+    defaultId: const String.fromEnvironment('BATCH_PATIENT_ID'),
+  );
+  try {
+    await patientSettings.load();
+  } on PlatformException catch (error) {
+    debugPrint('Could not load patient settings (${error.code}).');
+  } on MissingPluginException {
+    // Local patient settings are available in the Android phone app.
+  }
   runApp(
     IxlandApp(
       adapters: {
         'whoop': WhoopBleAdapter(),
         'samsung': const SamsungWearAdapter(),
       },
+      patientSettings: patientSettings,
       telemetryApi: TelemetryApi(
         url: const String.fromEnvironment(
           'BATCH_API_URL',
           defaultValue:
               'https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/batches',
         ),
-        patientId: const String.fromEnvironment('BATCH_PATIENT_ID'),
       ),
     ),
   );
@@ -36,24 +48,40 @@ void companionOverlayMain() {
 }
 
 class IxlandApp extends StatelessWidget {
-  const IxlandApp({super.key, required this.adapters, this.telemetryApi});
+  const IxlandApp({
+    super.key,
+    required this.adapters,
+    required this.patientSettings,
+    this.telemetryApi,
+  });
 
   final Map<String, WearableAdapter> adapters;
+  final PatientSettings patientSettings;
   final TelemetryApi? telemetryApi;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'IXLand',
-      home: LoginScreen(adapters: adapters, telemetryApi: telemetryApi),
+      home: LoginScreen(
+        adapters: adapters,
+        patientSettings: patientSettings,
+        telemetryApi: telemetryApi,
+      ),
     );
   }
 }
 
 class LoginScreen extends StatelessWidget {
-  const LoginScreen({super.key, required this.adapters, this.telemetryApi});
+  const LoginScreen({
+    super.key,
+    required this.adapters,
+    required this.patientSettings,
+    this.telemetryApi,
+  });
 
   final Map<String, WearableAdapter> adapters;
+  final PatientSettings patientSettings;
   final TelemetryApi? telemetryApi;
 
   @override
@@ -76,6 +104,7 @@ class LoginScreen extends StatelessWidget {
                 builder: (_) => ConnectedDevicesScreen(
                   adapters: adapters,
                   batchInterval: batchInterval,
+                  patientSettings: patientSettings,
                   telemetryApi: telemetryApi,
                 ),
               ),

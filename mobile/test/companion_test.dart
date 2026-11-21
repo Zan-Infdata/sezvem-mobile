@@ -16,6 +16,7 @@ import 'package:ixland_mobile/companion/companion_window.dart';
 import 'package:ixland_mobile/companion/styles/classic_style.dart';
 import 'package:ixland_mobile/companion/styles/companion_style.dart';
 import 'package:ixland_mobile/devices/connected_devices_screen.dart';
+import 'package:ixland_mobile/settings/patient_settings.dart';
 import 'package:ixland_mobile/settings/settings_screen.dart';
 
 void main() {
@@ -252,6 +253,7 @@ void main() {
         MaterialApp(
           home: SettingsScreen(
             companion: companion,
+            patientSettings: PatientSettings(),
             styles: const [ClassicCompanionStyle(), _DotStyle()],
           ),
         ),
@@ -273,6 +275,7 @@ void main() {
         MaterialApp(
           home: SettingsScreen(
             companion: companion,
+            patientSettings: PatientSettings(),
             styles: const [ClassicCompanionStyle(), _DotStyle()],
           ),
         ),
@@ -624,6 +627,7 @@ Widget _devicesScreen(CompanionOverlay companion) => MaterialApp(
     adapters: const {},
     batchInterval: const Duration(minutes: 5),
     companion: companion,
+    patientSettings: PatientSettings(),
   ),
 );
 
