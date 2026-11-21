@@ -27,14 +27,14 @@ Two coding agents work on this repo at the same time, Codex and Claude Code, eac
 
 | Agent | Folder | Branch |
 | --- | --- | --- |
-| Codex | `ixland/` (main checkout) | `main`, or `codex/<feature>` for larger features |
+| Codex | `ixland/` (main checkout) | `master`, or `codex/<feature>` for larger features |
 | Claude Code | `../ixland-claude/` (git worktree) | `claude/<feature>` |
 
 Claude creates its worktree from the repo root with `git worktree add ../ixland-claude -b claude/<feature>` and runs `flutter pub get` in `../ixland-claude/mobile/` before building.
 
 1. Commit small, self-contained changes often on your own branch. Never commit to the other agent's branch, and don't force-push, rebase, or reset a branch you don't own.
-2. Before starting a task and before handoff, run `git status` and `git log --oneline -5` so you don't build on stale or uncommitted state. Claude merges the latest `main` into its branch before handoff and resolves any conflicts there, not on `main`.
-3. The user decides when to merge a feature branch into `main`. Don't merge into `main` yourself unless the user asks.
+2. Before starting a task and before handoff, run `git status` and `git log --oneline -5` so you don't build on stale or uncommitted state. Claude merges the latest `master` into its branch before handoff and resolves any conflicts there, not on `master`.
+3. The user decides when to merge a feature branch into `master`. Don't merge into `master` yourself unless the user asks.
 4. Some files are shared and likely to conflict: `mobile/pubspec.yaml`, `mobile/pubspec.lock`, `mobile/lib/wearables/wearable_adapter.dart`, shared models, `docs/contracts.md`, `docs/architecture.md`, and this guide. Keep edits to these files minimal and mention them in the commit message and the handoff. Don't reformat or reorder them.
 5. In `docs/mobile-implementation.md`, add a new section for your feature rather than rewriting existing sections. Separate sections keep merges clean.
 6. Generated files stay out of git, including `build/`, `.dart_tool/`, and `.flutter-plugins-dependencies`. Run `flutter pub get` after pulling dependency changes.
