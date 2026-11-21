@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'companion/companion_overlay_app.dart';
 import 'devices/connected_devices_screen.dart';
 import 'wearables/samsung/samsung_wear_adapter.dart';
 import 'wearables/wearable_adapter.dart';
@@ -15,6 +16,14 @@ void main() {
       },
     ),
   );
+}
+
+/// Entry point of the companion overlay engine started by
+/// `CompanionOverlayService`. It must stay in this library so Android can find it.
+@pragma('vm:entry-point')
+void companionOverlayMain() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const CompanionOverlayApp());
 }
 
 class IxlandApp extends StatelessWidget {

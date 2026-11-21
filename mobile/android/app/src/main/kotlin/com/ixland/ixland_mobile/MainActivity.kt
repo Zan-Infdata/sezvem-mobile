@@ -1,6 +1,7 @@
 package com.ixland.ixland_mobile
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
@@ -10,10 +11,12 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private var pendingBluetoothPermission: MethodChannel.Result? = null
     private var wearBridge: WearBridge? = null
+    private var companionBridge: CompanionBridge? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         wearBridge = WearBridge(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
+        companionBridge = CompanionBridge(this, flutterEngine.dartExecutor.binaryMessenger)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ixland/bluetooth")
             .setMethodCallHandler { call, result ->
                 if (call.method == "requestScanPermissions") {
@@ -27,6 +30,8 @@ class MainActivity : FlutterActivity() {
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         wearBridge?.close()
         wearBridge = null
+        companionBridge?.close()
+        companionBridge = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 
@@ -48,6 +53,13 @@ class MainActivity : FlutterActivity() {
         } else {
             pendingBluetoothPermission = result
             requestPermissions(missing.toTypedArray(), BLUETOOTH_PERMISSION_REQUEST)
+        }
+    }
+
+    @Deprecated("Forwards the overlay settings result to the companion bridge.")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (companionBridge?.onActivityResult(requestCode) != true) {
+            super.onActivityResult(requestCode, resultCode, data)
         }
     }
 

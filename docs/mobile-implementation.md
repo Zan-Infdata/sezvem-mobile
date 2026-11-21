@@ -84,3 +84,48 @@ flutter build apk --debug
 The widget tests cover the bundled provider picker, setup guide, simulated live samples entering a batch, and disconnect. Unit tests cover WHOOP 4.0 protocol and decoding, Samsung discovery and sample mapping over mocked platform channels, and batch windows. The user verified their WHOOP 4.0 connection. The phone APK is generated at `mobile/build/app/outputs/flutter-apk/app-debug.apk`.
 
 Flutter analysis and all nine tests passed. Both debug APKs built with matching signing certificates. IXLand Watch installed and launched on the physical Galaxy Watch4, and the updated IXLand app installed and launched on its Android phone. The live sensor check starts when the wearer grants access and taps Start on the watch.
+
+## Companion overlay test
+
+The companion is a small animated character that appears over other Android apps. This first version is a manual test with placeholder art and a placeholder tap action.
+
+1. On **Connected devices**, tap **TEST** below **Add device**. The first time, Android opens **Display over other apps** for IXLand. Turn it on and go back. If access stays off, the app explains why it can't continue.
+2. IXLand moves to the background. The companion walks in from the right edge and rests near the right side of the screen, over whatever app is visible. The app underneath stays usable outside the character.
+3. Tap the companion to see a **Hello world** alert. Swipe it left or right and it runs off that edge, and its window closes. A short drag snaps it back.
+
+| Path | Role |
+| --- | --- |
+| `mobile/lib/companion/companion_overlay.dart` | Main-app interface to check and request overlay access, show and hide the companion, and minimize the app. |
+| `mobile/lib/companion/companion_overlay_app.dart` | Root widget of the overlay engine. Runs the enter, tap, and swipe-to-exit behavior and classifies swipes. |
+| `mobile/lib/companion/companion_window.dart` | Overlay-side channel to read the window layout, move the window, show an alert, and close it. |
+| `mobile/lib/companion/companion_movement.dart` | Moves the window horizontally at a set speed. Knows nothing about animation. |
+| `mobile/lib/companion/companion_character.dart` | Draws the character and animates idle bobbing, blinking, walking, and the tap reaction from the current state and facing. |
+| `mobile/lib/companion/companion_state.dart` | Companion states (`hidden`, `entering`, `idle`, `walking`, `reacting`, `exiting`) and facing direction. |
+| `mobile/android/app/src/main/kotlin/com/ixland/ixland_mobile/CompanionOverlayService.kt` | Owns the overlay window and the second Flutter engine that renders the character. |
+| `mobile/android/app/src/main/kotlin/com/ixland/ixland_mobile/CompanionBridge.kt` | `ixland/companion` channel for the main app, including the overlay settings flow. |
+
+### Overlay decisions
+
+- The overlay uses a native window instead of an overlay plugin, so the app controls its size, flags, and lifecycle with no new dependency. `CompanionOverlayService` adds a 96 dp `TYPE_APPLICATION_OVERLAY` window that is never focusable, so touches outside it reach the app underneath. Android requires the user to grant **Display over other apps**, which the app checks with `Settings.canDrawOverlays`. [Overlay window type](https://developer.android.com/reference/android/view/WindowManager.LayoutParams#TYPE_APPLICATION_OVERLAY) · [Overlay permission](https://developer.android.com/reference/android/provider/Settings#ACTION_MANAGE_OVERLAY_PERMISSION)
+- The window runs a second Flutter engine that starts at `companionOverlayMain` in `main.dart`. The entry point has to stay in that library so Android can find it. The engine renders with a transparent texture and doesn't register plugins. Dart decides where the character goes and calls the service to move the window, so the character's look and behavior stay in Flutter.
+- Movement and animation are separate. `CompanionMovementController` only sets the window position. `CompanionCharacter` picks its animation from `CompanionState` and the facing direction. The placeholder painter draws from a normalized `CompanionPose`, so a sprite sheet or Rive renderer can replace it without changing the controllers. Animations stop while the companion is hidden.
+- Transparent pixels inside the 96 dp window still receive touches, so the window is kept small. Horizontal positions may go off screen so the character can walk out. Vertical positions are clamped to the area outside system bars and display cutouts. After rotation or a display change, the window is moved back on screen. Before Android 11, the clamp uses the full display size and doesn't account for cutouts.
+- The **Hello world** alert is a system dialog shown as an overlay window. It stands in for opening the chat, which doesn't exist yet.
+- The service is started while IXLand is in the foreground. It isn't a foreground service and shows no notification. Android can still stop the process in the background, which removes the companion. Appearances triggered later in the background will need a supported path, such as a notification the user taps or a foreground service with a matching type. [Background service limits](https://developer.android.com/about/versions/oreo/background#services) · [Foreground service types](https://developer.android.com/develop/background-work/services/fg-service-types)
+- Settings, AI-triggered appearances, a policy for when the companion may appear, and handling for access being revoked while it's visible aren't implemented yet.
+
+### Verify the companion
+
+From `mobile/`, run the analyzer and tests, then build and install the phone app.
+
+```sh
+flutter analyze
+flutter test
+flutter run
+```
+
+`test/companion_test.dart` covers swipe classification, the TEST button with granted and denied access, and the overlay walking in, sending **Hello world** on tap, and walking off and closing after a swipe, with the window channel mocked.
+
+On a physical Android phone, tap **TEST**, grant access, and check that the companion walks in over the home screen. Open another app and confirm you can tap and scroll around the character. Tap the companion for the alert, then swipe it away in each direction. Rotate the phone while it's visible and check it stays on screen.
+
+Flutter analysis and all 15 tests passed, and the debug APK built. The companion hasn't been run on a device yet.

@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../companion/companion_overlay.dart';
 import '../wearables/metric_batch_buffer.dart';
 import '../wearables/wearable_adapter.dart';
 import 'device_scan_screen.dart';
@@ -13,10 +15,12 @@ class ConnectedDevicesScreen extends StatefulWidget {
     super.key,
     required this.adapters,
     required this.batchInterval,
+    this.companion = const AndroidCompanionOverlay(),
   });
 
   final Map<String, WearableAdapter> adapters;
   final Duration batchInterval;
+  final CompanionOverlay companion;
 
   @override
   State<ConnectedDevicesScreen> createState() => _ConnectedDevicesScreenState();
@@ -83,6 +87,32 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
         );
   }
 
+  Future<void> _testCompanion() async {
+    final companion = widget.companion;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final allowed =
+          await companion.hasPermission() ||
+          await companion.requestPermission();
+      if (!allowed) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Allow IXLand to display over other apps to test the companion.',
+            ),
+          ),
+        );
+        return;
+      }
+      await companion.show();
+      await companion.minimizeApp();
+    } on PlatformException {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not show the companion.')),
+      );
+    }
+  }
+
   Future<void> _disconnect() async {
     setState(() => _disconnecting = true);
     try {
@@ -141,13 +171,27 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
                   ),
               ],
             ),
-      floatingActionButton: device == null
-          ? FloatingActionButton.extended(
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (device == null) ...[
+            FloatingActionButton.extended(
+              heroTag: 'add_device',
               onPressed: _addDevice,
               icon: const Icon(Icons.add),
               label: const Text('Add device'),
-            )
-          : null,
+            ),
+            const SizedBox(height: 12),
+          ],
+          FloatingActionButton.extended(
+            heroTag: 'test_companion',
+            onPressed: _testCompanion,
+            icon: const Icon(Icons.pets),
+            label: const Text('TEST'),
+          ),
+        ],
+      ),
     );
   }
 }
