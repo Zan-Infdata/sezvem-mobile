@@ -47,8 +47,14 @@ internal class WearBridge(context: Context, messenger: BinaryMessenger) : EventC
         onCancel(null)
         val receiver = object : MessageClient.OnMessageReceivedListener {
             override fun onMessageReceived(event: MessageEvent) {
-                if (listener === this && event.sourceNodeId == nodeId && event.path == HEART_RATE_PATH) {
-                    event.data.decodeToString().toIntOrNull()?.takeIf { it > 0 }?.let(events::success)
+                if (listener !== this || event.sourceNodeId != nodeId) return
+                when (event.path) {
+                    HEART_RATE_PATH ->
+                        event.data.decodeToString().toIntOrNull()?.takeIf { it > 0 }?.let(events::success)
+                    STEP_COUNT_PATH ->
+                        event.data.decodeToString().toLongOrNull()?.takeIf { it >= 0 }?.let {
+                            events.success(mapOf("steps" to it))
+                        }
                 }
             }
         }
@@ -79,5 +85,6 @@ internal class WearBridge(context: Context, messenger: BinaryMessenger) : EventC
     private companion object {
         const val WATCH_CAPABILITY = "ixland_watch_v1"
         const val HEART_RATE_PATH = "/ixland/heart-rate/v1"
+        const val STEP_COUNT_PATH = "/ixland/steps/v1"
     }
 }

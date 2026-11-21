@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ixland_mobile/companion/companion_overlay.dart';
 import 'package:ixland_mobile/settings/patient_settings.dart';
 import 'package:ixland_mobile/settings/settings_screen.dart';
+import 'package:ixland_mobile/sync/patient_api.dart';
 
 void main() {
   testWidgets('edits, creates, and restores the saved patient ID', (
@@ -13,11 +14,13 @@ void main() {
     const companionChannel = MethodChannel('ixland/companion');
     final messenger = tester.binding.defaultBinaryMessenger;
     String? persistedId;
+    var saveFails = false;
     messenger.setMockMethodCallHandler(patientChannel, (call) async {
       switch (call.method) {
         case 'getPatientId':
           return persistedId;
         case 'setPatientId':
+          if (saveFails) throw PlatformException(code: 'save_failed');
           persistedId = call.arguments as String;
           return null;
         default:
@@ -47,7 +50,16 @@ void main() {
     final field = find.byType(TextField);
     String displayedId() => tester.widget<TextField>(field).controller!.text;
 
-    final settings = PatientSettings(defaultId: 'build-id');
+    var creationCalls = 0;
+    final settings = PatientSettings(
+      defaultId: 'build-id',
+      createPatient: () async {
+        if (++creationCalls == 1) {
+          throw const PatientCreationException('Could not create patient.');
+        }
+        return 'p-abcdef01';
+      },
+    );
     await openSettings(settings);
     expect(displayedId(), 'build-id');
 
@@ -66,17 +78,33 @@ void main() {
     expect(persistedId, 'edited-id');
     expect(settings.patientId, 'edited-id');
 
-    await tester.tap(find.text('Create patient'));
+    final create = find.text('Create patient');
+    await tester.tap(create);
     await tester.pump();
-    final created = displayedId();
-    expect(created, matches(RegExp(r'^test-[a-f0-9]{32}$')));
-    expect(persistedId, created);
-    expect(settings.patientId, created);
+    expect(find.text('Could not create patient.'), findsOneWidget);
+    expect(displayedId(), 'edited-id');
+    expect(settings.patientId, 'edited-id');
+    expect(persistedId, 'edited-id');
+
+    saveFails = true;
+    await tester.tap(create);
+    await tester.pump();
+    expect(find.textContaining('retry saving'), findsOneWidget);
+    expect(settings.patientId, 'edited-id');
+    expect(persistedId, 'edited-id');
+
+    saveFails = false;
+    await tester.tap(create);
+    await tester.pump();
+    expect(creationCalls, 2);
+    expect(displayedId(), 'p-abcdef01');
+    expect(persistedId, 'p-abcdef01');
+    expect(settings.patientId, 'p-abcdef01');
 
     final restarted = PatientSettings(defaultId: 'build-id');
     await openSettings(restarted);
-    expect(displayedId(), created);
-    expect(restarted.patientId, created);
+    expect(displayedId(), 'p-abcdef01');
+    expect(restarted.patientId, 'p-abcdef01');
     await tester.pumpWidget(const SizedBox.shrink());
   });
 }

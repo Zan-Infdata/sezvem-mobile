@@ -8,6 +8,7 @@ import '../companion/companion_state.dart';
 import '../companion/styles/companion_look.dart';
 import '../companion/styles/companion_style.dart';
 import '../companion/styles/companion_styles.dart';
+import '../sync/patient_api.dart';
 import 'patient_settings.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -62,15 +63,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _patientError = null;
     });
     try {
-      final id = create ? await createPatient() : editedId;
-      await widget.patientSettings.save(id);
+      final settings = widget.patientSettings;
+      final id = create ? await settings.createPatient() : editedId;
+      if (!create) await settings.save(id);
       if (!mounted) return;
       _patientId.text = id;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Patient ID saved.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(create ? 'Patient created.' : 'Patient ID saved.'),
+        ),
+      );
+    } on PatientCreationException catch (error) {
+      if (mounted) setState(() => _patientError = error.message);
     } on PlatformException {
-      if (mounted) setState(() => _patientError = 'Could not save patient ID.');
+      if (mounted) {
+        setState(() {
+          _patientError = create
+              ? 'Patient created. Tap Create patient again to retry saving.'
+              : 'Could not save patient ID.';
+        });
+      }
     } on MissingPluginException {
       if (mounted) {
         setState(() => _patientError = 'Patient settings require Android.');
@@ -212,7 +224,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: const Text('Save patient ID'),
                     ),
                     OutlinedButton(
-                      onPressed: _savingPatient
+                      onPressed:
+                          _savingPatient ||
+                              !widget.patientSettings.canCreatePatient
                           ? null
                           : () => _savePatientId(create: true),
                       child: const Text('Create patient'),

@@ -13,10 +13,12 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.health.services.client.HealthServices
 import androidx.health.services.client.MeasureCallback
+import androidx.health.services.client.PassiveListenerCallback
 import androidx.health.services.client.data.Availability
 import androidx.health.services.client.data.DataPointContainer
 import androidx.health.services.client.data.DataType
 import androidx.health.services.client.data.DeltaDataType
+import androidx.health.services.client.data.PassiveListenerConfig
 import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.CapabilityInfo
 import com.google.android.gms.wearable.Wearable
@@ -26,12 +28,29 @@ class WatchActivity : Activity() {
     private val measureClient by lazy { HealthServices.getClient(this).measureClient }
     private val capabilities by lazy { Wearable.getCapabilityClient(this) }
     private val messages by lazy { Wearable.getMessageClient(this) }
+    private val stepClient by lazy { HealthServices.getClient(this).passiveMonitoringClient }
     private lateinit var measurement: TextView
     private lateinit var phoneStatus: TextView
     private lateinit var toggle: Button
     private var measuring = false
     private var visible = false
     private var phoneId: String? = null
+    private var latestSteps: Long? = null
+
+    private val stepCallback = object : PassiveListenerCallback {
+        override fun onNewDataPointsReceived(dataPoints: DataPointContainer) {
+            if (!measuring) return
+            val count = dataPoints.getData(DataType.STEPS_DAILY)
+                .maxByOrNull { it.endDurationFromBoot }?.value ?: return
+            if (count < 0) return
+            latestSteps = count
+            phoneId?.let(::sendSteps)
+        }
+
+        override fun onPermissionLost() {
+            latestSteps = null
+        }
+    }
 
     private val phoneListener = CapabilityClient.OnCapabilityChangedListener { capability ->
         updatePhone(capability)
@@ -49,6 +68,7 @@ class WatchActivity : Activity() {
                 if (!measuring) return@runOnUiThread
                 measurement.text = "${readings.last()} bpm"
                 phoneId?.let { node ->
+                    sendSteps(node)
                     readings.forEach { bpm ->
                         messages.sendMessage(node, HEART_RATE_PATH, bpm.toString().toByteArray())
                     }
@@ -121,17 +141,25 @@ class WatchActivity : Activity() {
     }
 
     private fun requestMeasurement() {
-        val permission = if (Build.VERSION.SDK_INT >= 36) {
+        val heartPermission = heartRatePermission()
+        val permissions = buildList {
+            if (checkSelfPermission(heartPermission) != PackageManager.PERMISSION_GRANTED) {
+                add(heartPermission)
+            }
+            if (checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED) {
+                add(Manifest.permission.ACTIVITY_RECOGNITION)
+            }
+        }
+        if (permissions.isEmpty()) startMeasurement()
+        else requestPermissions(permissions.toTypedArray(), MEASUREMENT_REQUEST)
+    }
+
+    private fun heartRatePermission(): String =
+        if (Build.VERSION.SDK_INT >= 36) {
             "android.permission.health.READ_HEART_RATE"
         } else {
             Manifest.permission.BODY_SENSORS
         }
-        if (checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) {
-            startMeasurement()
-        } else {
-            requestPermissions(arrayOf(permission), HEART_RATE_REQUEST)
-        }
-    }
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -139,8 +167,8 @@ class WatchActivity : Activity() {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode != HEART_RATE_REQUEST) return
-        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+        if (requestCode != MEASUREMENT_REQUEST) return
+        if (checkSelfPermission(heartRatePermission()) == PackageManager.PERMISSION_GRANTED) {
             if (visible) startMeasurement()
         } else {
             measurement.text = "Allow heart-rate access"
@@ -157,11 +185,30 @@ class WatchActivity : Activity() {
             measureClient.registerMeasureCallback(DataType.HEART_RATE_BPM, heartRateCallback)
         } catch (_: Exception) {
             stopMeasurement("Heart rate unavailable")
+            return
+        }
+        if (checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED) {
+            try {
+                val config = PassiveListenerConfig.builder()
+                    .setDataTypes(setOf(DataType.STEPS_DAILY))
+                    .build()
+                stepClient.setPassiveListenerCallback(config, stepCallback)
+            } catch (_: SecurityException) {
+                // Keep heart-rate streaming if activity access was revoked.
+            }
+        }
+    }
+
+    private fun sendSteps(node: String) {
+        latestSteps?.let { count ->
+            messages.sendMessage(node, STEP_COUNT_PATH, count.toString().toByteArray())
         }
     }
 
     private fun stopMeasurement(label: String) {
         measuring = false
+        stepClient.clearPassiveListenerCallbackAsync()
+        latestSteps = null
         measureClient.unregisterMeasureCallbackAsync(DataType.HEART_RATE_BPM, heartRateCallback)
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         measurement.text = label
@@ -171,6 +218,7 @@ class WatchActivity : Activity() {
     private companion object {
         const val PHONE_CAPABILITY = "ixland_phone_v1"
         const val HEART_RATE_PATH = "/ixland/heart-rate/v1"
-        const val HEART_RATE_REQUEST = 1
+        const val STEP_COUNT_PATH = "/ixland/steps/v1"
+        const val MEASUREMENT_REQUEST = 1
     }
 }

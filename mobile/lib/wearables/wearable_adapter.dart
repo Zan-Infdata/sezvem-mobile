@@ -20,11 +20,28 @@ final class WearableConnected extends WearableEvent {
   const WearableConnected();
 }
 
-final class HeartRateSample extends WearableEvent {
-  const HeartRateSample({required this.bpm, required this.receivedAt});
+sealed class WearableSample extends WearableEvent {
+  const WearableSample({required this.receivedAt});
+
+  final DateTime receivedAt;
+}
+
+final class HeartRateSample extends WearableSample {
+  const HeartRateSample({required this.bpm, required super.receivedAt});
 
   final int bpm;
-  final DateTime receivedAt;
+}
+
+final class TemperatureSample extends WearableSample {
+  const TemperatureSample({required this.celsius, required super.receivedAt});
+
+  final double celsius;
+}
+
+final class StepCountSample extends WearableSample {
+  const StepCountSample({required this.count, required super.receivedAt});
+
+  final int count;
 }
 
 final class WearableException implements Exception {

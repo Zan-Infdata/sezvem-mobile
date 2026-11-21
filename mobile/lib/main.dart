@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'companion/companion_overlay_app.dart';
 import 'devices/connected_devices_screen.dart';
 import 'settings/patient_settings.dart';
+import 'sync/patient_api.dart';
 import 'sync/telemetry_api.dart';
 import 'wearables/samsung/samsung_wear_adapter.dart';
 import 'wearables/wearable_adapter.dart';
@@ -11,8 +12,14 @@ import 'wearables/whoop/whoop_ble_adapter.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  const batchUrl = String.fromEnvironment(
+    'BATCH_API_URL',
+    defaultValue:
+        'https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/batches',
+  );
   final patientSettings = PatientSettings(
     defaultId: const String.fromEnvironment('BATCH_PATIENT_ID'),
+    createPatient: PatientApi(batchUrl: batchUrl).createPatient,
   );
   try {
     await patientSettings.load();
@@ -28,13 +35,7 @@ Future<void> main() async {
         'samsung': const SamsungWearAdapter(),
       },
       patientSettings: patientSettings,
-      telemetryApi: TelemetryApi(
-        url: const String.fromEnvironment(
-          'BATCH_API_URL',
-          defaultValue:
-              'https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/batches',
-        ),
-      ),
+      telemetryApi: TelemetryApi(url: batchUrl),
     ),
   );
 }

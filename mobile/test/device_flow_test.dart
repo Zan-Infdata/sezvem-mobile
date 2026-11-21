@@ -55,11 +55,19 @@ void main() {
   ) async {
     final adapter = _TestWearableAdapter();
     final api = _TestTelemetryApi();
-    final patient = PatientSettings(defaultId: 'fixture-patient');
-    const channel = MethodChannel('ixland/patient_settings');
+    final patient = PatientSettings(
+      defaultId: 'fixture-patient',
+      createPatient: () async => 'p-abcdef01',
+    );
+    const settingsChannel = MethodChannel('ixland/patient_settings');
+    const companionChannel = MethodChannel('ixland/companion');
     final messenger = tester.binding.defaultBinaryMessenger;
-    messenger.setMockMethodCallHandler(channel, (call) async => null);
-    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+    messenger.setMockMethodCallHandler(settingsChannel, (call) async => null);
+    messenger.setMockMethodCallHandler(companionChannel, (call) async => null);
+    addTearDown(() {
+      messenger.setMockMethodCallHandler(settingsChannel, null);
+      messenger.setMockMethodCallHandler(companionChannel, null);
+    });
     await tester.pumpWidget(
       DefaultAssetBundle(
         bundle: _ProviderTestBundle(),
@@ -166,7 +174,19 @@ void main() {
     expect(find.text('Samples in batch: 2'), findsOneWidget);
     expect(api.posts, [payload]);
 
-    await patient.save('next-patient');
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Create patient'));
+    await tester.pump();
+    expect(patient.patientId, 'p-abcdef01');
+    expect(find.text('Patient created.'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    tester
+        .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
+        .removeCurrentSnackBar();
+    await tester.pumpAndSettle();
     adapter.events.add(
       HeartRateSample(bpm: 76, receivedAt: start.add(interval * 2)),
     );
@@ -177,7 +197,7 @@ void main() {
     await tickBatchTimer();
     final next = previewPayload();
     expect(api.posts, [payload, extended, next]);
-    expect(next['patient_id'], 'next-patient');
+    expect(next['patient_id'], 'p-abcdef01');
     expect(next['hr'], [76]);
     expect(find.text('Samples in batch: 0'), findsOneWidget);
 
