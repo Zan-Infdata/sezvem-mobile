@@ -89,7 +89,7 @@ Flutter analysis and all nine tests passed. Both debug APKs built with matching 
 
 Connected Devices attempts to send completed UTC windows on the configured batch cadence. The buffer groups readings by provider and device, keeps pending samples after disconnect, and removes only the samples acknowledged by the sender. Pending data and batch numbers live in memory for the current app session.
 
-`_ConnectedDevicesScreenState._sendBatch` is the temporary sender. It displays the latest attempted object under **Batch JSON (debug)** and returns `true` to simulate acceptance. A future HTTP sender should return `true` after confirmed acceptance, return `false` for confirmed non-acceptance, and throw when delivery is uncertain. After a `false` result, the next attempt includes newly completed windows for that device and extends the interval from the original start. A lost response retries the original payload unchanged while additional readings continue to buffer.
+`_ConnectedDevicesScreenState._sendBatch` is the temporary sender. It displays the latest attempted object under **Batch JSON (debug)** and simulates acceptance by default. A future HTTP sender should return `true` after confirmed acceptance, return `false` for confirmed non-acceptance, and throw when delivery is uncertain. After a `false` result, the next attempt includes newly completed windows for that device and extends the interval from the original start. A lost response retries the original payload unchanged while additional readings continue to buffer.
 
 The preview shows `null` for `patient_id` and `steps` until sign-in supplies a patient ID and the adapter supplies a step count. It uses an empty temperature array and `null` for `spo2`, `sleep_start`, and `sleep_end`. The staging payload still needs a patient ID and an agreed step count or missing-data policy.
 
@@ -100,3 +100,7 @@ The preview shows `null` for `patient_id` and `steps` until sign-in supplies a p
 Set a positive whole number with `BATCH_UPLOAD_INTERVAL_SECONDS`. The app defaults to 60 seconds if the value is absent or invalid. Rerun the app after changing the build-time setting.
 
 From `mobile/`, run `flutter run --dart-define=BATCH_UPLOAD_INTERVAL_SECONDS=10` and connect a wearable. When the next 10-second window closes, check that **Batch JSON (debug)** shows `batch_interval_in_seconds` of 10 and the pending sample count drops for the accepted readings. The widget test also verifies the override with `flutter test --dart-define=BATCH_UPLOAD_INTERVAL_SECONDS=10 test/device_flow_test.dart`.
+
+## Debug jam
+
+After the first JSON preview appears, check **Debug jam** below it to simulate an API that receives no batches. The preview updates on each attempt, while the debug sender returns `false` so the buffer retains the readings. Keep the wearable streaming through two windows and check that the pending sample count grows and the attempted payload spans both windows. Uncheck **Debug jam** to let the next scheduled attempt clear the readings it accepts. The Connected Devices widget test exercises this flow with synthetic heart-rate readings.

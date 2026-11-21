@@ -81,7 +81,20 @@ void main() {
     expect(interval.inSeconds, configuredSeconds > 0 ? configuredSeconds : 60);
     final start = MetricBatchBuffer(
       interval: interval,
-    ).windowStart(DateTime.now()).subtract(interval);
+    ).windowStart(DateTime.now()).subtract(interval * 3);
+
+    Map<String, dynamic> previewPayload() {
+      final preview = tester.widget<SelectableText>(
+        find.byType(SelectableText),
+      );
+      return jsonDecode(preview.data!) as Map<String, dynamic>;
+    }
+
+    Future<void> tickBatchTimer() async {
+      await tester.pump(interval);
+      await tester.pumpAndSettle();
+    }
+
     adapter.events.add(const WearableConnected());
     adapter.events.add(
       HeartRateSample(
@@ -100,13 +113,42 @@ void main() {
     expect(find.text('Samples in batch: 2'), findsOneWidget);
     expect(find.text('Batch JSON (debug)'), findsNothing);
 
-    await tester.pump(interval);
-    await tester.pumpAndSettle();
+    await tickBatchTimer();
     expect(find.text('Batch JSON (debug)'), findsOneWidget);
-    final preview = tester.widget<SelectableText>(find.byType(SelectableText));
-    final payload = jsonDecode(preview.data!) as Map<String, dynamic>;
+    final payload = previewPayload();
     expect(payload['hr'], [72, 73]);
     expect(payload['batch_interval_in_seconds'], interval.inSeconds);
+    expect(find.text('Samples in batch: 0'), findsOneWidget);
+
+    final jam = find.widgetWithText(CheckboxListTile, 'Debug jam');
+    expect(tester.widget<CheckboxListTile>(jam).value, isFalse);
+    await tester.tap(jam);
+    await tester.pump();
+    expect(tester.widget<CheckboxListTile>(jam).value, isTrue);
+
+    adapter.events.add(
+      HeartRateSample(bpm: 74, receivedAt: start.add(interval)),
+    );
+    await tickBatchTimer();
+    final rejected = previewPayload();
+    expect(rejected['hr'], [74]);
+    expect(find.text('Samples in batch: 1'), findsOneWidget);
+
+    adapter.events.add(
+      HeartRateSample(bpm: 75, receivedAt: start.add(interval * 2)),
+    );
+    await tickBatchTimer();
+    final extended = previewPayload();
+    expect(extended['b_number'], rejected['b_number']);
+    expect(extended['hr'], [74, 75]);
+    expect(extended['batch_interval_in_seconds'], interval.inSeconds * 2);
+    expect(find.text('Samples in batch: 2'), findsOneWidget);
+
+    await tester.tap(jam);
+    await tester.pump();
+    expect(tester.widget<CheckboxListTile>(jam).value, isFalse);
+    await tickBatchTimer();
+    expect(previewPayload(), extended);
     expect(find.text('Samples in batch: 0'), findsOneWidget);
 
     await tester.tap(find.text('Disconnect'));
