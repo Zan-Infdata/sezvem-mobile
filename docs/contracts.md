@@ -16,7 +16,7 @@ Send one JSON object per batch over an authenticated HTTPS POST. Use `POST /v1/m
 | `sleep_end` | `timestamp\|null` | End of the same session, in the same format and later than `sleep_start`, or `null`. |
 | `temperature` | `float[]` | Temperature samples as finite JSON numbers in degrees Celsius, ordered by measurement time within the window. Confirm which measurement types to accept, such as skin temperature. |
 | `steps` | `int` | Latest current step count reported by the wearable when the batch is prepared. Send the count as reported, with no deltas or accumulation. Repeated counts and device resets are valid. Zero represents a measured count of zero. |
-| `spo2` | `int` | One oxygen saturation value as a whole percentage. Confirm whether to use the latest valid sample or a window summary, and how to round it. |
+| `spo2` | `int\|null` | Oxygen saturation as a whole percentage when supported. Send JSON `null` in every batch for now. |
 | `batch_interval_in_seconds` | `int` | Positive duration of the measurement window in seconds. |
 
 ```json
@@ -29,12 +29,12 @@ Send one JSON object per batch over an authenticated HTTPS POST. Use `POST /v1/m
   "sleep_end": null,
   "temperature": [33.4, 33.5],
   "steps": 4218,
-  "spo2": 97,
+  "spo2": null,
   "batch_interval_in_seconds": 300
 }
 ```
 
-Each window includes its start and excludes its end. Arrays are independent, may have different lengths, and carry no per-sample timestamps. Propose using an empty array for a metric with no samples. If a provider supplies no `steps` or `spo2` value, the current schema has no missing-value representation for that field. Agree on whether to hold or skip incomplete windows or revise the schema before using those providers in staging. Use only measured or agreed derived values.
+Each window includes its start and excludes its end. Arrays are independent, may have different lengths, and carry no per-sample timestamps. Propose using an empty array for a metric with no samples. If a provider supplies no `steps` value, the current schema has no missing-value representation for that field. Agree on whether to hold or skip incomplete windows or revise the schema before using those providers in staging. Use only measured or agreed derived values.
 
 ## Completed sleep and backend HRV
 
@@ -50,7 +50,7 @@ Attach `sleep_start` and `sleep_end` together to the next eligible batch when a 
   "sleep_end": "2026-03-01T06:53:00Z",
   "temperature": [33.5],
   "steps": 4218,
-  "spo2": 97,
+  "spo2": null,
   "batch_interval_in_seconds": 300
 }
 ```
