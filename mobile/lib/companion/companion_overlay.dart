@@ -11,8 +11,19 @@ abstract interface class CompanionOverlay {
   /// Completes with whether access is granted after the user returns.
   Future<bool> requestPermission();
 
+  /// Shows the companion. Starts the companion service if it isn't running.
   Future<void> show();
+
+  /// Removes the companion and stops the companion service.
   Future<void> hide();
+
+  /// Whether the companion is on screen.
+  Future<bool> isShowing();
+
+  /// Asks the companion to walk to [uv], where (0, 0) is the top left and
+  /// (1, 1) the bottom right of the padded screen area. Completes with false if
+  /// the companion isn't showing or is busy with another action.
+  Future<bool> moveTo(Offset uv);
 
   /// Sends the app to the background without closing it.
   Future<void> minimizeApp();
@@ -36,6 +47,15 @@ class AndroidCompanionOverlay implements CompanionOverlay {
 
   @override
   Future<void> hide() => _channel.invokeMethod<void>('hide');
+
+  @override
+  Future<bool> isShowing() async =>
+      await _channel.invokeMethod<bool>('isShowing') ?? false;
+
+  @override
+  Future<bool> moveTo(Offset uv) async =>
+      await _channel.invokeMethod<bool>('moveTo', {'u': uv.dx, 'v': uv.dy}) ??
+      false;
 
   @override
   Future<void> minimizeApp() => _channel.invokeMethod<void>('minimizeApp');

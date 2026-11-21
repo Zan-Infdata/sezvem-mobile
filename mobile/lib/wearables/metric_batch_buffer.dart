@@ -61,7 +61,10 @@ final class MetricBatchBuffer {
     required String deviceId,
   }) {
     final windows = _connections[(providerId, deviceId)]?.windows.values;
-    return windows?.fold<int>(0, (count, window) => count + window.sampleCount) ??
+    return windows?.fold<int>(
+          0,
+          (count, window) => count + window.sampleCount,
+        ) ??
         0;
   }
 

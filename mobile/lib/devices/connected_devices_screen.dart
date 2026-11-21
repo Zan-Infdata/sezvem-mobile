@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../companion/companion_overlay.dart';
+import '../companion/companion_wander_test.dart';
 import '../wearables/metric_batch_buffer.dart';
 import '../wearables/wearable_adapter.dart';
 import 'device_scan_screen.dart';
@@ -38,10 +39,19 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
   HeartRateSample? _latest;
   String? _error;
   String? _batchJson;
+  late final _companionWander = CompanionWanderTest(
+    companion: widget.companion,
+  );
+  late final AppLifecycleListener _companionLifecycle;
 
   @override
   void initState() {
     super.initState();
+    // Moves the companion around while the app is in the background.
+    _companionLifecycle = AppLifecycleListener(
+      onHide: _companionWander.start,
+      onShow: _companionWander.stop,
+    );
     final now = DateTime.now().toUtc();
     final next = _batchBuffer.windowStart(now).add(_batchBuffer.interval);
     _batchTimer = Timer(next.difference(now), () {
@@ -168,6 +178,8 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
 
   @override
   void dispose() {
+    _companionLifecycle.dispose();
+    _companionWander.stop();
     _batchTimer.cancel();
     unawaited(_connection?.cancel());
     super.dispose();

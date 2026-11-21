@@ -126,3 +126,25 @@ class CompanionActionController {
     }
   }
 }
+
+/// Built-in action: walks in from the right edge to its resting spot.
+Future<void> enterFromRight(CompanionActionContext context) async {
+  context.animator
+    ..facing = CompanionFacing.left
+    ..state = CompanionState.entering;
+  await context.movement.walkTo(context.movement.restX);
+}
+
+/// Built-in action: walks to [uv] in 0 to 1 screen coordinates, facing the
+/// way it walks. The main app requests this through `CompanionOverlay.moveTo`.
+Future<void> walkToUv(CompanionActionContext context, Offset uv) async {
+  final movement = context.movement;
+  final target = movement.pointForUv(uv);
+  if (target.dx != movement.x) {
+    context.animator.facing = target.dx < movement.x
+        ? CompanionFacing.left
+        : CompanionFacing.right;
+  }
+  context.animator.state = CompanionState.walking;
+  await movement.walkToPoint(target);
+}

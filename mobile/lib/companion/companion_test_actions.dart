@@ -19,14 +19,6 @@ Map<CompanionInput, CompanionAction> testCompanionActions() => {
   CompanionInput.hold: inflate,
 };
 
-/// Walks in from the right edge to its resting spot.
-Future<void> enterFromRight(CompanionActionContext context) async {
-  context.animator
-    ..facing = CompanionFacing.left
-    ..state = CompanionState.entering;
-  await context.movement.walkTo(context.movement.restX);
-}
-
 /// Bounces once and shows a Hello world alert.
 Future<void> sayHello(CompanionActionContext context) async {
   context.animator.state = CompanionState.reacting;

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/scheduler.dart';
 
@@ -7,13 +8,15 @@ import 'companion_window.dart';
 /// Moves the overlay window across the screen at a steady speed.
 ///
 /// This controller only owns the window position. It doesn't know which
-/// animation the character plays.
+/// animation the character plays. Positions are the window's top-left corner
+/// in physical pixels.
 class CompanionMovementController {
   CompanionMovementController({
     required this.window,
     required CompanionWindowLayout layout,
     required TickerProvider vsync,
     this.speed = 180,
+    this.padding = 16,
   }) : _layout = layout,
        x = layout.x,
        y = layout.y {
@@ -25,12 +28,16 @@ class CompanionMovementController {
   /// Walking speed in logical pixels per second.
   final double speed;
 
+  /// Gap in logical pixels kept between the window and the usable screen
+  /// edges for [pointForUv].
+  final double padding;
+
   CompanionWindowLayout _layout;
   late final Ticker _ticker;
   double x;
   double y;
-  double _fromX = 0;
-  double _toX = 0;
+  Offset _from = Offset.zero;
+  Offset _to = Offset.zero;
   Duration _duration = Duration.zero;
   Completer<void>? _walk;
 
@@ -40,6 +47,23 @@ class CompanionMovementController {
   /// The x position just past the left or right screen edge.
   double offscreenX({required bool left}) =>
       left ? _layout.screenLeft - _layout.width : _layout.screenRight;
+
+  /// Converts a point in 0 to 1 screen coordinates to a window position.
+  ///
+  /// (0, 0) puts the window in the top-left corner and (1, 1) in the
+  /// bottom-right corner of the usable screen area, inset by [padding]. The
+  /// same coordinates give the same relative spot on any screen size.
+  Offset pointForUv(Offset uv) {
+    final inset = padding * _layout.density;
+    final left = _layout.screenLeft + inset;
+    final top = _layout.screenTop + inset;
+    final width = _layout.screenRight - inset - _layout.width - left;
+    final height = _layout.screenBottom - inset - _layout.height - top;
+    return Offset(
+      left + uv.dx.clamp(0.0, 1.0) * (width > 0 ? width : 0),
+      top + uv.dy.clamp(0.0, 1.0) * (height > 0 ? height : 0),
+    );
+  }
 
   void updateLayout(CompanionWindowLayout layout) {
     _layout = layout;
@@ -51,17 +75,23 @@ class CompanionMovementController {
 
   /// Walks horizontally to [targetX]. A new walk replaces the current one.
   /// [speed] overrides the default walking speed for this walk.
-  Future<void> walkTo(double targetX, {double? speed}) {
+  Future<void> walkTo(double targetX, {double? speed}) =>
+      walkToPoint(Offset(targetX, y), speed: speed);
+
+  /// Walks in a straight line to [target]. A new walk replaces the current
+  /// one. [speed] overrides the default walking speed for this walk.
+  Future<void> walkToPoint(Offset target, {double? speed}) {
     _stop();
     final pixelsPerSecond = (speed ?? this.speed) * _layout.density;
-    final distance = (targetX - x).abs();
+    final distance = (target - Offset(x, y)).distance;
     if (distance < 1 || pixelsPerSecond <= 0) {
-      x = targetX;
+      x = target.dx;
+      y = target.dy;
       unawaited(window.moveTo(x, y));
       return Future.value();
     }
-    _fromX = x;
-    _toX = targetX;
+    _from = Offset(x, y);
+    _to = target;
     _duration = Duration(
       microseconds: (distance / pixelsPerSecond * 1e6).round(),
     );
@@ -75,7 +105,9 @@ class CompanionMovementController {
       0.0,
       1.0,
     );
-    x = _fromX + (_toX - _fromX) * t;
+    final point = Offset.lerp(_from, _to, t)!;
+    x = point.dx;
+    y = point.dy;
     unawaited(window.moveTo(x, y));
     if (t >= 1) _stop();
   }

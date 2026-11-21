@@ -53,12 +53,27 @@ class CompanionWindow {
     return CompanionWindowLayout.fromMap(map ?? const {});
   }
 
-  /// Called after rotation or a display change with the clamped layout.
-  void onLayoutChanged(void Function(CompanionWindowLayout layout) listener) {
+  /// Handles calls from the service. [onLayoutChanged] receives the clamped
+  /// layout after rotation or a display change. [onMoveTo] receives a point in
+  /// 0 to 1 screen coordinates from the main app and returns whether the
+  /// companion accepted the move.
+  void listen({
+    required void Function(CompanionWindowLayout layout) onLayoutChanged,
+    required bool Function(Offset uv) onMoveTo,
+  }) {
     _channel.setMethodCallHandler((call) async {
-      if (call.method == 'layoutChanged' && call.arguments is Map) {
-        listener(CompanionWindowLayout.fromMap(call.arguments as Map));
+      final args = call.arguments is Map ? call.arguments as Map : const {};
+      switch (call.method) {
+        case 'layoutChanged':
+          onLayoutChanged(CompanionWindowLayout.fromMap(args));
+          return null;
+        case 'moveToUv':
+          final u = (args['u'] as num?)?.toDouble();
+          final v = (args['v'] as num?)?.toDouble();
+          if (u == null || v == null) return false;
+          return onMoveTo(Offset(u, v));
       }
+      throw MissingPluginException(call.method);
     });
   }
 

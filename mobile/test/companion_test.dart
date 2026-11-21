@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +10,7 @@ import 'package:ixland_mobile/companion/companion_movement.dart';
 import 'package:ixland_mobile/companion/companion_overlay.dart';
 import 'package:ixland_mobile/companion/companion_overlay_app.dart';
 import 'package:ixland_mobile/companion/companion_state.dart';
+import 'package:ixland_mobile/companion/companion_wander_test.dart';
 import 'package:ixland_mobile/companion/companion_window.dart';
 import 'package:ixland_mobile/devices/connected_devices_screen.dart';
 
@@ -119,6 +121,122 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+  });
+
+  group('CompanionWanderTest', () {
+    testWidgets('brings the companion back, then moves it on a timer', (
+      tester,
+    ) async {
+      final companion = _FakeCompanionOverlay(granted: true);
+      final wander = CompanionWanderTest(
+        companion: companion,
+        minDelay: const Duration(seconds: 5),
+        maxDelay: const Duration(seconds: 5),
+      )..start();
+
+      await tester.pump(const Duration(seconds: 1));
+      expect(companion.calls, ['hasPermission', 'isShowing', 'show']);
+
+      companion.calls.clear();
+      await tester.pump(const Duration(seconds: 5));
+      expect(companion.calls, ['hasPermission', 'isShowing', 'moveTo']);
+
+      // A dismissed companion is brought back instead of moved.
+      companion.showing = false;
+      companion.calls.clear();
+      await tester.pump(const Duration(seconds: 5));
+      expect(companion.calls, ['hasPermission', 'isShowing', 'show']);
+
+      wander.stop();
+      companion.calls.clear();
+      await tester.pump(const Duration(seconds: 10));
+      expect(companion.calls, isEmpty);
+    });
+
+    testWidgets('does nothing without overlay access', (tester) async {
+      final companion = _FakeCompanionOverlay(granted: false);
+      final wander = CompanionWanderTest(companion: companion)..start();
+      await tester.pump(const Duration(seconds: 10));
+      expect(companion.calls.toSet(), {'hasPermission'});
+      wander.stop();
+    });
+
+    test(
+      'picks delays uniformly from 4 to 8 seconds and points from 0 to 1',
+      () {
+        final wander = CompanionWanderTest(
+          companion: _FakeCompanionOverlay(granted: true),
+          random: math.Random(1),
+        );
+        final delays = List.generate(2000, (_) => wander.nextDelay());
+        expect(
+          delays.every(
+            (d) =>
+                d >= const Duration(seconds: 4) &&
+                d <= const Duration(seconds: 8),
+          ),
+          isTrue,
+        );
+        // Roughly a quarter of the samples falls in each second.
+        final firstSecond = delays
+            .where((d) => d < const Duration(seconds: 5))
+            .length;
+        expect(firstSecond, inInclusiveRange(400, 600));
+
+        final points = List.generate(500, (_) => wander.nextPoint());
+        expect(
+          points.every((p) => p.dx >= 0 && p.dx <= 1 && p.dy >= 0 && p.dy <= 1),
+          isTrue,
+        );
+      },
+    );
+
+    testWidgets('runs only while the app is in the background', (tester) async {
+      final companion = _FakeCompanionOverlay(granted: true, showing: true);
+      await tester.pumpWidget(_devicesScreen(companion));
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      await tester.pump(const Duration(seconds: 10));
+      expect(companion.calls, contains('moveTo'));
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      companion.calls.clear();
+      await tester.pump(const Duration(seconds: 20));
+      expect(companion.calls, isEmpty);
+    });
+  });
+
+  group('pointForUv', () {
+    test('maps 0 to 1 coordinates into the padded screen area', () {
+      final movement = CompanionMovementController(
+        window: CompanionWindow(
+          channel: const MethodChannel('test/companion/window'),
+        ),
+        layout: const CompanionWindowLayout(
+          x: 0,
+          y: 0,
+          width: 192,
+          height: 192,
+          screenLeft: 0,
+          screenTop: 100,
+          screenRight: 1440,
+          screenBottom: 3000,
+          density: 2,
+        ),
+        vsync: const TestVSync(),
+      );
+      // 16 dp of padding is 32 px at density 2.
+      expect(movement.pointForUv(Offset.zero), const Offset(32, 132));
+      expect(movement.pointForUv(const Offset(1, 1)), const Offset(1216, 2776));
+      expect(
+        movement.pointForUv(const Offset(0.5, 0.5)),
+        const Offset(624, 1454),
+      );
+      expect(movement.pointForUv(const Offset(2, -1)), const Offset(1216, 132));
+      movement.dispose();
     });
   });
 
@@ -242,6 +360,24 @@ void main() {
       await finish(tester);
     });
 
+    testWidgets('walks to a point the app sends unless busy', (tester) async {
+      await enter(tester);
+
+      expect(await native.sendMove(tester, 0.5, 0.25), isTrue);
+      await pumpFor(tester, const Duration(seconds: 5));
+      // 16 + 0.5 * (1080 - 96 - 32) and 16 + 0.25 * (2000 - 96 - 32).
+      expect(native.x, 492);
+      expect(native.y, 484);
+
+      // A running action declines the move.
+      await tester.fling(companion, const Offset(0, 60), 1000);
+      await pumpFor(tester, const Duration(milliseconds: 200));
+      expect(await native.sendMove(tester, 0, 0), isFalse);
+      await pumpFor(tester, const Duration(seconds: 3));
+      expect(native.x, 492);
+      await finish(tester);
+    });
+
     testWidgets('a small drag keeps the companion on screen', (tester) async {
       await enter(tester);
       await tester.drag(companion, const Offset(20, 0), warnIfMissed: false);
@@ -321,6 +457,21 @@ class _FakeNativeWindow {
         });
   }
 
+  /// Sends a move request from the service to the overlay, as the main app
+  /// does through `CompanionOverlay.moveTo`.
+  Future<Object?> sendMove(WidgetTester tester, double u, double v) async {
+    const codec = StandardMethodCodec();
+    ByteData? reply;
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          _channel.name,
+          codec.encodeMethodCall(MethodCall('moveToUv', {'u': u, 'v': v})),
+          (data) => reply = data,
+        );
+    await tester.pump();
+    return codec.decodeEnvelope(reply!);
+  }
+
   void uninstall() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_channel, null);
@@ -336,10 +487,12 @@ Widget _devicesScreen(CompanionOverlay companion) => MaterialApp(
 );
 
 class _FakeCompanionOverlay implements CompanionOverlay {
-  _FakeCompanionOverlay({required this.granted});
+  _FakeCompanionOverlay({required this.granted, this.showing = false});
 
   final bool granted;
+  bool showing;
   final calls = <String>[];
+  final moves = <Offset>[];
 
   @override
   Future<bool> hasPermission() async {
@@ -354,10 +507,29 @@ class _FakeCompanionOverlay implements CompanionOverlay {
   }
 
   @override
-  Future<void> show() async => calls.add('show');
+  Future<void> show() async {
+    calls.add('show');
+    showing = true;
+  }
 
   @override
-  Future<void> hide() async => calls.add('hide');
+  Future<void> hide() async {
+    calls.add('hide');
+    showing = false;
+  }
+
+  @override
+  Future<bool> isShowing() async {
+    calls.add('isShowing');
+    return showing;
+  }
+
+  @override
+  Future<bool> moveTo(Offset uv) async {
+    calls.add('moveTo');
+    moves.add(uv);
+    return true;
+  }
 
   @override
   Future<void> minimizeApp() async => calls.add('minimizeApp');

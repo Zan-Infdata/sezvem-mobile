@@ -1,7 +1,12 @@
 package com.ixland.ixland_mobile
 
 import android.app.AlertDialog
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
+import android.content.pm.ServiceInfo
 import android.content.Intent
 import android.content.res.Configuration
 import android.media.AudioAttributes
@@ -10,7 +15,9 @@ import android.media.AudioTrack
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 import android.view.ContextThemeWrapper
 import android.view.Gravity
@@ -36,6 +43,10 @@ import kotlin.math.sin
  * bounds reach the app underneath. The character is drawn by a second Flutter engine that runs
  * the `companionOverlayMain` entry point. Movement and gestures are decided in Dart, which calls
  * back through [WINDOW_CHANNEL].
+ *
+ * The service runs in the foreground with a notification so the app keeps running in the
+ * background and can show, hide, and move the companion. Closing the companion only removes its
+ * window. The service stops through the notification's Stop action or [CompanionBridge].
  */
 class CompanionOverlayService : Service() {
     private val windowManager by lazy { getSystemService(WINDOW_SERVICE) as WindowManager }
@@ -45,15 +56,27 @@ class CompanionOverlayService : Service() {
     private var channel: MethodChannel? = null
     private var dialog: AlertDialog? = null
     private var sound: AudioTrack? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /** Whether the companion window is on screen. */
+    val isShowing: Boolean
+        get() = view != null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        startInForeground()
+        instance = this
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!show()) stopSelf()
+        if (intent?.action == ACTION_STOP || !show()) stopSelf()
         return START_NOT_STICKY
     }
 
-    private fun show(): Boolean {
+    /** Adds the companion window if it isn't showing. Returns false without overlay access. */
+    fun show(): Boolean {
         if (view != null) return true
         if (!Settings.canDrawOverlays(this)) return false
 
@@ -152,7 +175,8 @@ class CompanionOverlayService : Service() {
             }
             "close" -> {
                 result.success(null)
-                stopSelf()
+                // Destroy the engine after this call returns, not while it's handling the call.
+                mainHandler.post(::hide)
             }
             else -> result.notImplemented()
         }
@@ -241,7 +265,26 @@ class CompanionOverlayService : Service() {
         channel?.invokeMethod("layoutChanged", layout())
     }
 
-    override fun onDestroy() {
+    /**
+     * Asks the companion to walk to a point given in 0 to 1 screen coordinates. [onResult] receives
+     * false when the companion isn't showing, isn't ready, or is busy with another action.
+     */
+    fun moveTo(u: Double, v: Double, onResult: (Boolean) -> Unit) {
+        val channel = channel ?: return onResult(false)
+        channel.invokeMethod(
+            "moveToUv",
+            mapOf("u" to u, "v" to v),
+            object : MethodChannel.Result {
+                override fun success(result: Any?) = onResult(result == true)
+                override fun error(code: String, message: String?, details: Any?) = onResult(false)
+                // The overlay engine hasn't registered its handler yet.
+                override fun notImplemented() = onResult(false)
+            },
+        )
+    }
+
+    /** Removes the companion window and its engine. The service keeps running. */
+    fun hide() {
         stopSound()
         dialog?.dismiss()
         dialog = null
@@ -255,7 +298,54 @@ class CompanionOverlayService : Service() {
         params = null
         engine?.destroy()
         engine = null
+    }
+
+    override fun onDestroy() {
+        if (instance === this) instance = null
+        mainHandler.removeCallbacksAndMessages(null)
+        hide()
         super.onDestroy()
+    }
+
+    private fun startInForeground() {
+        val notifications = getSystemService(NotificationManager::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            notifications.createNotificationChannel(
+                NotificationChannel(
+                    NOTIFICATION_CHANNEL,
+                    "Companion",
+                    NotificationManager.IMPORTANCE_LOW,
+                ).apply { description = "Shown while the companion can appear over other apps." },
+            )
+        }
+        val stop = PendingIntent.getService(
+            this,
+            0,
+            Intent(this, CompanionOverlayService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val open = packageManager.getLaunchIntentForPackage(packageName)?.let {
+            PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE)
+        }
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, NOTIFICATION_CHANNEL)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        val notification = builder
+            .setSmallIcon(R.drawable.ic_companion)
+            .setContentTitle("IXLand companion")
+            .setContentText("The companion can appear over other apps.")
+            .setOngoing(true)
+            .setContentIntent(open)
+            .addAction(Notification.Action.Builder(null, "Stop", stop).build())
+            .build()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     private fun layout(): Map<String, Any> {
@@ -293,6 +383,13 @@ class CompanionOverlayService : Service() {
 
     companion object {
         const val WINDOW_CHANNEL = "ixland/companion/window"
+        const val ACTION_STOP = "com.ixland.ixland_mobile.companion.STOP"
+        private const val NOTIFICATION_CHANNEL = "companion"
+        private const val NOTIFICATION_ID = 7
+
+        /** The running service, or null. The bridge uses it to control the companion. */
+        var instance: CompanionOverlayService? = null
+            private set
         private const val ENTRY_POINT = "companionOverlayMain"
         /** Must match `companionWindowSize` in `companion_actions.dart`. */
         private const val WINDOW_SIZE_DP = 96

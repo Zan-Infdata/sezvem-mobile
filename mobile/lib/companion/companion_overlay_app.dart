@@ -69,12 +69,16 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
       layout: layout,
       vsync: this,
     );
-    _window.onLayoutChanged(movement.updateLayout);
     final actions = _actions = CompanionActionController(
       actions: widget.actions ?? testCompanionActions(),
       animator: _animator,
       movement: movement,
       window: _window,
+    );
+    _window.listen(
+      onLayoutChanged: movement.updateLayout,
+      // Moves from the main app follow the same one-at-a-time rule as inputs.
+      onMoveTo: (uv) => actions.run((context) => walkToUv(context, uv)),
     );
     actions.run(enterFromRight);
   }

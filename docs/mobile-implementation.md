@@ -102,6 +102,7 @@ The companion is a small animated character that appears over other Android apps
 1. On **Connected devices**, tap **TEST** below **Add device**. The first time, Android opens **Display over other apps** for IXLand. Turn it on and go back. If access stays off, the app explains why it can't continue.
 2. IXLand moves to the background. The companion walks in from the right edge and rests near the right side of the screen, over whatever app is visible. The app underneath stays usable outside the character.
 3. Interact with the companion. It runs one action at a time and ignores other input until the current action ends.
+4. While IXLand stays in the background, it controls the companion. After about a second, it brings the companion back if it isn't on screen. Then, every 4 to 8 seconds, picked uniformly, it sends the companion walking to a random spot, or brings it back if it was swiped away. Opening IXLand stops the test. A notification stays visible while the companion service runs, and its **Stop** action removes the companion.
 
 | Input | Test action |
 | --- | --- |
@@ -115,21 +116,25 @@ A short drag snaps back without triggering an action.
 
 | Path | Role |
 | --- | --- |
-| `mobile/lib/companion/companion_overlay.dart` | Main-app interface to check and request overlay access, show and hide the companion, and minimize the app. |
+| `mobile/lib/companion/companion_overlay.dart` | Main-app interface to check and request overlay access, show, hide, and move the companion, check whether it's showing, and minimize the app. |
+| `mobile/lib/companion/companion_wander_test.dart` | Background test that brings the companion back or sends it to a random point every 4 to 8 seconds. `ConnectedDevicesScreen` starts it when the app is hidden and stops it when the app is shown. |
 | `mobile/lib/companion/companion_overlay_app.dart` | Root widget of the overlay engine. Turns taps, swipes, and holds into inputs for the action controller. |
-| `mobile/lib/companion/companion_actions.dart` | Inputs, the action type, the context an action runs with, and the controller that runs one action at a time. |
-| `mobile/lib/companion/companion_test_actions.dart` | The entrance and the six test actions, and the map from inputs to actions. |
+| `mobile/lib/companion/companion_actions.dart` | Inputs, the action type, the context an action runs with, the controller that runs one action at a time, and the built-in entrance and walk-to-point actions. |
+| `mobile/lib/companion/companion_test_actions.dart` | The six test actions and the map from inputs to actions. |
 | `mobile/lib/companion/companion_animator.dart` | Decides which animation plays: state, facing, mood, and the bounce, backflip, and inflate clips. |
-| `mobile/lib/companion/companion_movement.dart` | Moves the window horizontally at a set speed. Knows nothing about animation. |
+| `mobile/lib/companion/companion_movement.dart` | Moves the window in a straight line at a set speed and converts 0 to 1 screen coordinates to window positions. Knows nothing about animation. |
 | `mobile/lib/companion/companion_character.dart` | Draws the character from the animator and adds the idle bobbing, walking sway, and blinking. |
-| `mobile/lib/companion/companion_window.dart` | Overlay-side channel to read the window layout, move or resize the window, play the inflating sound, show an alert, and close it. |
+| `mobile/lib/companion/companion_window.dart` | Overlay-side channel to read the window layout, move or resize the window, play the inflating sound, show an alert, and close it. Also receives layout changes and move requests from the service. |
 | `mobile/lib/companion/companion_state.dart` | Companion states (`hidden`, `entering`, `idle`, `walking`, `reacting`, `exiting`), facing, and mood. |
-| `mobile/android/app/src/main/kotlin/com/ixland/ixland_mobile/CompanionOverlayService.kt` | Owns the overlay window, the second Flutter engine that renders the character, and the generated sound. |
+| `mobile/android/app/src/main/kotlin/com/ixland/ixland_mobile/CompanionOverlayService.kt` | Foreground service with a notification. Owns the overlay window, the second Flutter engine that renders the character, and the generated sound, and passes move requests to the overlay. |
+| `mobile/android/app/src/main/res/drawable/ic_companion.xml` | Notification icon. |
 | `mobile/android/app/src/main/kotlin/com/ixland/ixland_mobile/CompanionBridge.kt` | `ixland/companion` channel for the main app, including the overlay settings flow. |
 
 ### Add a companion action
 
 An action is an async function that takes a `CompanionActionContext`. Use the context to call app code and drive the character: `animator` for animations, state, and mood, `movement` to walk the window, `window` for alerts and sound, `withRoom` to grow the window while the action runs, and `close` to remove the companion. A hold action can wait on `released` to learn when the finger lifts. Register the function for an input in `testCompanionActions`, or pass another map to `CompanionOverlayApp`. When an action finishes, the controller returns the companion to `idle` unless the action closed it.
+
+The main app can also drive the companion. `CompanionOverlay.moveTo` sends a point in 0 to 1 screen coordinates. (0, 0) puts the companion in the top-left corner of the usable screen and (1, 1) in the bottom-right, both 16 dp from the edges, so the same point is the same relative spot on any phone. The overlay runs the move as the built-in `walkToUv` action, so it follows the one-action-at-a-time rule. `moveTo` returns false when the companion isn't showing or is busy, and the caller can try again later.
 
 ```dart
 Future<void> wave(CompanionActionContext context) async {
@@ -148,7 +153,9 @@ Future<void> wave(CompanionActionContext context) async {
 - Swipes use the larger axis of the fling velocity, or of the drag distance for a slow drag. Holding still for Flutter's long-press delay starts the hold action.
 - The inflating sound is generated in the service as rushing air under a rising tone and played with `AudioTrack`, so no audio package or sound file is needed. It plays as a sonification sound, stops when the character reaches its limit or the finger lifts, and is skipped if audio can't start. [AudioTrack](https://developer.android.com/reference/android/media/AudioTrack)
 - The **Hello world** alert is a system dialog shown as an overlay window. It stands in for opening the chat, which doesn't exist yet.
-- The service is started while IXLand is in the foreground. It isn't a foreground service and shows no notification. Android can still stop the process in the background, which removes the companion. Appearances triggered later in the background will need a supported path, such as a notification the user taps or a foreground service with a matching type. [Background service limits](https://developer.android.com/about/versions/oreo/background#services) · [Foreground service types](https://developer.android.com/develop/background-work/services/fg-service-types)
+- The companion service runs as a foreground service with an ongoing notification. Without it, Android freezes or stops a backgrounded app, so the app couldn't move the companion. It is declared with the `specialUse` type and a stated reason, because no other type covers an on-screen companion. Google Play reviews that reason before release. The notification opens IXLand, and its **Stop** action ends the service. On Android 13 and later, the notification only shows in the drawer if notification access is allowed. The service still runs either way. [Foreground service types](https://developer.android.com/develop/background-work/services/fg-service-types#special-use) · [Foreground service notifications](https://developer.android.com/develop/ui/views/notifications/notification-permission#exemptions)
+- Swiping the companion away removes its window and engine but keeps the service running. The app then brings the companion back by calling the running service directly, so no new start from the background is needed. Android can still refuse to start the service from the background, which applies to Android 15 and later unless the companion is already visible. The app reports that as `start_blocked` and the test tries again on its next step. Tap **TEST** while IXLand is open to start the service. [Restrictions on starting from the background](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start)
+- The background test runs in the main app's Dart code, which keeps running while the service keeps the process alive. If the user removes IXLand from recent apps, the activity and its Dart code end, and the test stops while the companion stays. Opening IXLand starts a new engine, and the test resumes the next time the app goes to the background.
 - Settings, AI-triggered appearances, a policy for when the companion may appear, and handling for access being revoked while it's visible aren't implemented yet.
 
 ### Verify the companion
@@ -161,8 +168,8 @@ flutter test
 flutter run
 ```
 
-`test/companion_test.dart` covers swipe classification in all four directions, the one-action-at-a-time rule, and the TEST button with granted and denied access. It also covers each test action with the window channel mocked: the alert on tap, walking off and closing on side swipes, the backflip's temporary resize, inputs blocked while sad, and the hold's sound, resize, and release. Inputs after closing are ignored.
+`test/companion_test.dart` covers swipe classification in all four directions, the one-action-at-a-time rule, and the TEST button with granted and denied access. It also covers each test action with the window channel mocked: the alert on tap, walking off and closing on side swipes, the backflip's temporary resize, inputs blocked while sad, and the hold's sound, resize, and release. Inputs after closing are ignored. For app control, it covers the 0 to 1 coordinate mapping with padding and density, walking to a point the app sends, declining a move while busy, the background test bringing the companion back and moving it, uniform 4 to 8 second delays, and the test running only while the app is hidden.
 
-On a physical Android phone, tap **TEST**, grant access, and check that the companion walks in over the home screen. Open another app and confirm you can tap and scroll around the character. Try each input from the table, and check that other inputs do nothing while an action runs, especially during the two sad seconds. Hold with the phone's sound on to hear the inflating sound. Check the backflip and inflation aren't clipped and the character doesn't jump when the window resizes. Rotate the phone while it's visible and check it stays on screen.
+On a physical Android phone, tap **TEST**, grant access, and check that the companion walks in over the home screen. Open another app and confirm you can tap and scroll around the character. Try each input from the table, and check that other inputs do nothing while an action runs, especially during the two sad seconds. Hold with the phone's sound on to hear the inflating sound. Check the backflip and inflation aren't clipped and the character doesn't jump when the window resizes. Rotate the phone while it's visible and check it stays on screen. Leave IXLand in the background and check that the companion walks to a new spot every 4 to 8 seconds without leaving the screen. Swipe it away and check it walks back in within 8 seconds. Open IXLand and check it stops moving. Use **Stop** in the notification and check the companion and the notification go away.
 
-Flutter analysis and all 22 tests passed after merging `master`, and the debug APK built. The companion hasn't been run on a device yet.
+Flutter analysis and all 28 tests passed, and the debug APK built. The companion hasn't been run on a device yet.
