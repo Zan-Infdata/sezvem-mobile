@@ -29,7 +29,9 @@ class CompanionActionContext {
     required this.window,
     required this.released,
     required void Function() onClose,
-  }) : _onClose = onClose;
+    required Future<void> Function() openChat,
+  }) : _onClose = onClose,
+       _openChat = openChat;
 
   /// Plays animations and sets the state, mood, and facing.
   final CompanionAnimator animator;
@@ -45,6 +47,11 @@ class CompanionActionContext {
   final Future<void> released;
 
   final void Function() _onClose;
+  final Future<void> Function() _openChat;
+
+  /// Opens the chat with the on-device assistant and completes when the user
+  /// closes it. The window fills the screen meanwhile.
+  Future<void> openChat() => _openChat();
 
   /// Grows the window to fit a style box of [size] in design units, such as
   /// [CompanionStyle.backflipSize], while [body] runs. Then it restores the
@@ -74,12 +81,18 @@ class CompanionActionController {
     required this.animator,
     required this.movement,
     required this.window,
+    this.openChat = _noChat,
   });
+
+  static Future<void> _noChat() async {}
 
   final Map<CompanionInput, CompanionAction> actions;
   final CompanionAnimator animator;
   final CompanionMovementController movement;
   final CompanionWindow window;
+
+  /// Shows the chat until the user closes it. Supplied by the overlay app.
+  final Future<void> Function() openChat;
 
   bool _busy = false;
   bool _closed = false;
@@ -109,6 +122,7 @@ class CompanionActionController {
       window: window,
       released: released ?? Future.value(),
       onClose: () => _closed = true,
+      openChat: openChat,
     );
     unawaited(_run(action, context));
     return true;

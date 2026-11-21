@@ -1,10 +1,13 @@
 import 'dart:async';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
+import '../assistant/assistant_chat.dart';
+import '../assistant/assistant_engine.dart';
 import 'companion_actions.dart';
 import 'companion_animator.dart';
 import 'companion_character.dart';
+import 'companion_chat_panel.dart';
 import 'companion_movement.dart';
 import 'companion_test_actions.dart';
 import 'companion_window.dart';
@@ -42,9 +45,13 @@ class CompanionOverlayApp extends StatefulWidget {
     this.window,
     this.actions,
     this.styles = companionStyles,
+    this.assistant,
   });
 
   final CompanionWindow? window;
+
+  /// Defaults to [NativeAssistantEngine].
+  final AssistantEngine? assistant;
 
   /// Defaults to [testCompanionActions].
   final Map<CompanionInput, CompanionAction>? actions;
@@ -65,6 +72,21 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
   Completer<void>? _hold;
   late CompanionStyle _style = widget.styles.first;
   Offset _drag = Offset.zero;
+
+  /// Kept for the life of the overlay, so reopening the chat shows earlier
+  /// messages. Nothing is saved.
+  AssistantChat? _chat;
+  Completer<void>? _chatClosed;
+
+  /// The head's rectangle in the expanded window when the chat opened, in
+  /// logical pixels. Null while the chat is closed.
+  Rect? _chatFrom;
+
+  /// Whether the open chat is fully shown rather than animating closed.
+  bool _chatShown = false;
+
+  static const _chatAnimation = Duration(milliseconds: 220);
+  static const _headSize = 96.0;
 
   @override
   void initState() {
@@ -89,6 +111,7 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
       animator: _animator,
       movement: movement,
       window: _window,
+      openChat: _openChat,
     );
     _window.listen(
       onLayoutChanged: movement.updateLayout,
@@ -98,8 +121,47 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
         if (!mounted) return;
         setState(() => _style = look.resolve(widget.styles));
       },
+      onBack: _closeChat,
     );
     actions.run(enterFromRight);
+  }
+
+  /// Expands the window into a chat head with the panel below it, and
+  /// completes after the user closes it and the window is small again.
+  Future<void> _openChat() async {
+    final movement = _movement;
+    if (movement == null || !mounted) return;
+    final from = await _window.getLayout();
+    final expanded = await _window.expand();
+    if (!mounted) return;
+    final density = expanded.density;
+    final chat = _chat ??= AssistantChat(
+      widget.assistant ?? NativeAssistantEngine(),
+    );
+    unawaited(chat.prepare());
+    final closed = _chatClosed = Completer<void>();
+    setState(() {
+      _chatFrom = Rect.fromLTWH(
+        (from.x - expanded.x) / density,
+        (from.y - expanded.y) / density,
+        from.width / density,
+        from.height / density,
+      );
+      _chatShown = true;
+    });
+    await closed.future;
+    if (!mounted) return;
+    setState(() => _chatShown = false);
+    await Future<void>.delayed(_chatAnimation);
+    if (!mounted) return;
+    setState(() => _chatFrom = null);
+    movement.updateLayout(await _window.collapse());
+  }
+
+  void _closeChat() {
+    final closed = _chatClosed;
+    _chatClosed = null;
+    if (closed != null && !closed.isCompleted) closed.complete();
   }
 
   bool _accepts() {
@@ -136,6 +198,8 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
 
   @override
   void dispose() {
+    _closeChat();
+    _chat?.dispose();
     _actions?.dispose();
     _endHold();
     _movement?.dispose();
@@ -145,12 +209,79 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
 
   @override
   Widget build(BuildContext context) {
+    // MaterialApp supplies what the chat's text field needs. It paints no
+    // background, so the overlay stays transparent around the character.
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      color: const Color(0x00000000),
+      home: _chatFrom == null ? _buildCharacter() : _buildChat(),
+    );
+  }
+
+  Widget _buildChat() {
+    final chat = _chat!;
+    final from = _chatFrom!;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final head = Rect.fromLTWH(
+          constraints.maxWidth - 8 - _headSize,
+          8,
+          _headSize,
+          _headSize,
+        );
+        final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: _closeChat,
+                child: AnimatedOpacity(
+                  opacity: _chatShown ? 1 : 0,
+                  duration: _chatAnimation,
+                  child: const ColoredBox(color: Color(0x8A000000)),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              top: head.bottom + 8,
+              bottom: 12 + keyboard,
+              child: AnimatedOpacity(
+                opacity: _chatShown ? 1 : 0,
+                duration: _chatAnimation,
+                child: CompanionChatPanel(chat: chat, onClose: _closeChat),
+              ),
+            ),
+            TweenAnimationBuilder<Rect?>(
+              tween: RectTween(begin: from, end: _chatShown ? head : from),
+              duration: _chatAnimation,
+              curve: Curves.easeOut,
+              builder: (context, rect, child) =>
+                  Positioned.fromRect(rect: rect ?? head, child: child!),
+              child: Semantics(
+                button: true,
+                label: 'IXLand companion. Tap to close the chat.',
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _closeChat,
+                  child: CompanionCharacter(animator: _animator, style: _style),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildCharacter() {
     return Directionality(
       textDirection: TextDirection.ltr,
       child: Semantics(
         button: true,
         label:
-            'IXLand companion. Tap, hold, or swipe in any direction to interact.',
+            'IXLand companion. Tap to chat. Hold or swipe in any direction to interact.',
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => _actions?.handle(CompanionInput.tap),

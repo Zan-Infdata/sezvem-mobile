@@ -117,7 +117,7 @@ The companion is a small animated character that appears over other Android apps
 
 | Input | Test action |
 | --- | --- |
-| Tap | Bounces once and shows a **Hello world** alert. |
+| Tap | Bounces and opens the chat with the on-device assistant. See [Companion chat with on-device Gemma](#companion-chat-with-on-device-gemma). |
 | Swipe left or right | Runs off that edge and its window closes. |
 | Swipe up | Jumps and does a backflip. |
 | Swipe down | Looks sad for two seconds. |
@@ -195,7 +195,6 @@ To add a base, extend `DressUpBase` with an outline, colors, and where the eyes,
 - The chosen look is saved natively in `SharedPreferences` instead of through a Flutter plugin, because the overlay engine doesn't register plugins. It stores the style ID and the slot choices as a JSON string. The main app writes it through `CompanionBridge`, and the overlay reads it on start. When the look changes while the companion is showing, the service tells the overlay to switch. Unknown or missing styles fall back to the first style, and unknown options keep the default. Bad saved data gives the default look.
 - Swipes use the larger axis of the fling velocity, or of the drag distance for a slow drag. Holding still for Flutter's long-press delay starts the hold action.
 - The inflating sound is generated in the service as rushing air under a rising tone and played with `AudioTrack`, so no audio package or sound file is needed. It plays as a sonification sound, stops when the character reaches its limit or the finger lifts, and is skipped if audio can't start. [AudioTrack](https://developer.android.com/reference/android/media/AudioTrack)
-- The **Hello world** alert is a system dialog shown as an overlay window. It stands in for opening the chat, which doesn't exist yet.
 - The companion service runs as a foreground service with an ongoing notification. Without it, Android freezes or stops a backgrounded app, so the app couldn't move the companion. It is declared with the `specialUse` type and a stated reason, because no other type covers an on-screen companion. Google Play reviews that reason before release. The notification opens IXLand, and its **Stop** action ends the service. On Android 13 and later, the notification only shows in the drawer if notification access is allowed. The service still runs either way. [Foreground service types](https://developer.android.com/develop/background-work/services/fg-service-types#special-use) · [Foreground service notifications](https://developer.android.com/develop/ui/views/notifications/notification-permission#exemptions)
 - Swiping the companion away removes its window and engine but keeps the service running. The app then brings the companion back by calling the running service directly, so no new start from the background is needed. Android can still refuse to start the service from the background, which applies to Android 15 and later unless the companion is already visible. The app reports that as `start_blocked` and the test tries again on its next step. Tap **TEST** while IXLand is open to start the service. [Restrictions on starting from the background](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start)
 - The background test runs in the main app's Dart code, which keeps running while the service keeps the process alive. If the user removes IXLand from recent apps, the activity and its Dart code end, and the test stops while the companion stays. Opening IXLand starts a new engine, and the test resumes the next time the app goes to the background.
@@ -317,3 +316,28 @@ adb push models/gemma-4-E2B-it.litertlm /sdcard/Android/data/com.ixland.ixland_m
 ```
 
 Check free phone storage first with `adb shell df -h /data`. E2B needs roughly 2.6 GB of storage and several GB of free RAM while loaded. The larger E4B file (3.66 GB) is not used on the test phone.
+
+## Companion chat with on-device Gemma
+
+Tap the companion to open a chat with Gemma 4 E2B running on the phone through Google's LiteRT-LM. The window grows to the usable screen behind a dim backdrop. The character slides to the top right as the chat head, and the chat panel opens below it. Type a message and the reply streams in. Tap the head, the backdrop, **Close chat**, or Back to close it. The window returns to the character's earlier spot. While the chat is open, the companion ignores other gestures and moves from the main app.
+
+Messages and the model's conversation exist in memory only. Closing and reopening the chat keeps them. **New chat** clears them. When the companion window closes, the chat is discarded and the model unloads to free its memory. Nothing is sent over the network or written to storage, and native logs contain only load and reply timings and chunk counts, never message text.
+
+| Path | Role |
+| --- | --- |
+| `mobile/android/app/src/main/kotlin/com/ixland/ixland_mobile/AssistantEngine.kt` | One LiteRT-LM engine and conversation per app process. Loads, replies, cancels, resets, and unloads on a background thread. Holds the short system instruction. |
+| `mobile/android/app/src/main/kotlin/com/ixland/ixland_mobile/AssistantBridge.kt` | `ixland/assistant` method channel and `ixland/assistant/events` reply stream for a Flutter engine. The overlay engine registers it. |
+| `mobile/lib/assistant/assistant_engine.dart` | `AssistantEngine` interface and the native implementation. Each reply has an ID chosen by Dart, so chunks from different replies don't mix. |
+| `mobile/lib/assistant/assistant_chat.dart` | In-memory messages, model state, send, stop, and new chat. |
+| `mobile/lib/companion/companion_chat_panel.dart` | Chat panel: status line, messages, text field, send, stop, new chat, and close. |
+| `mobile/lib/companion/companion_overlay_app.dart` | Opens the chat from the tap action, animates the head, and collapses the window afterward. |
+
+Decisions:
+
+- The model runs in native Kotlin through LiteRT-LM 0.19.1 rather than a Flutter plugin. It's Google's supported runtime, it supports tool calling for the next step, and both Flutter engines can share one loaded model. The `flutter_gemma` plugin was discontinued in October 2026.
+- The model loads when the chat first opens. Loading takes several seconds, and the status line shows the time it took. The send button stays disabled until the model is ready.
+- Inference uses the CPU by default. To try the GPU, build with `--dart-define=ASSISTANT_BACKEND=gpu`. The manifest declares the optional OpenCL libraries LiteRT-LM needs for the GPU.
+- While the chat is open, the window is focusable so the keyboard can type into it, and it uses `SOFT_INPUT_ADJUST_RESIZE`. The panel also pads itself by the keyboard inset. Back is intercepted in the window's root view and closes the chat.
+- The system instruction asks for brief plain-text replies and to direct health concerns to the care team. Personalization and API tools come later.
+
+To verify, copy the model to the phone as described in [On-device Gemma model files](#on-device-gemma-model-files), then install the app, show the companion, and tap it. Check load and reply timings with `adb logcat -s AssistantEngine`. If the model file is missing, the chat shows the path the app expects. `flutter test test/assistant_chat_test.dart test/companion_test.dart` covers the chat state, the channel protocol, opening and closing the chat, streaming, Back, and the missing-model message.

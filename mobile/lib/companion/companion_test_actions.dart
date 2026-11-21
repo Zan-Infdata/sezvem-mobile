@@ -3,12 +3,13 @@ import 'companion_actions.dart';
 import 'companion_state.dart';
 import 'styles/companion_style.dart';
 
-/// Test actions for the six companion inputs.
+/// Actions for the six companion inputs. Tap opens the chat. The others are
+/// tests.
 ///
 /// Replace these with real behavior by mapping an input to another
 /// [CompanionAction].
 Map<CompanionInput, CompanionAction> testCompanionActions() => {
-  CompanionInput.tap: sayHello,
+  CompanionInput.tap: chat,
   CompanionInput.swipeLeft: (context) => leave(context, toLeft: true),
   CompanionInput.swipeRight: (context) => leave(context, toLeft: false),
   CompanionInput.swipeUp: backflip,
@@ -16,13 +17,10 @@ Map<CompanionInput, CompanionAction> testCompanionActions() => {
   CompanionInput.hold: inflate,
 };
 
-/// Bounces once and shows a Hello world alert.
-Future<void> sayHello(CompanionActionContext context) async {
+/// Bounces and opens the chat with the on-device assistant until it closes.
+Future<void> chat(CompanionActionContext context) async {
   context.animator.state = CompanionState.reacting;
-  await Future.wait([
-    context.animator.bounce(),
-    context.window.showAlert(title: 'IXLand', message: 'Hello world'),
-  ]);
+  await Future.wait([context.animator.bounce(), context.openChat()]);
 }
 
 /// Runs off the left or right edge and closes the companion.

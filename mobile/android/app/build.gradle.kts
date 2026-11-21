@@ -47,4 +47,6 @@ flutter {
 
 dependencies {
     implementation("com.google.android.gms:play-services-wearable:20.0.1")
+    // On-device Gemma for the companion chat. Needs Kotlin 2.3 or newer.
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.19.1")
 }

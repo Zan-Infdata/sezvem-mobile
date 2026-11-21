@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ixland_mobile/assistant/assistant_engine.dart';
 import 'package:ixland_mobile/companion/companion_actions.dart';
 import 'package:ixland_mobile/companion/companion_character.dart';
 import 'package:ixland_mobile/companion/companion_animator.dart';
@@ -417,9 +418,13 @@ void main() {
 
   group('overlay test actions', () {
     late _FakeNativeWindow native;
+    late _FakeAssistant assistant;
     final companion = find.byType(CompanionOverlayApp);
 
-    setUp(() => native = _FakeNativeWindow()..install());
+    setUp(() {
+      native = _FakeNativeWindow()..install();
+      assistant = _FakeAssistant();
+    });
     tearDown(() => native.uninstall());
 
     Future<void> pumpFor(WidgetTester tester, Duration duration) async {
@@ -431,7 +436,11 @@ void main() {
 
     Future<void> enter(WidgetTester tester) async {
       await tester.pumpWidget(
-        const SizedBox(width: 192, height: 192, child: CompanionOverlayApp()),
+        SizedBox(
+          width: 192,
+          height: 192,
+          child: CompanionOverlayApp(assistant: assistant),
+        ),
       );
       // The 200 px walk in takes about 1.1 seconds.
       await pumpFor(tester, const Duration(seconds: 2));
@@ -443,15 +452,72 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     }
 
-    testWidgets('tap bounces and says hello', (tester) async {
+    testWidgets('tap opens the chat, replies stream, and closing restores', (
+      tester,
+    ) async {
       await enter(tester);
       await tester.tap(companion);
       await pumpFor(tester, const Duration(milliseconds: 400));
-      expect(native.calls('showAlert').single.arguments, {
-        'title': 'IXLand',
-        'message': 'Hello world',
-      });
-      expect(native.x, 880);
+      expect(native.calls('expand'), hasLength(1));
+      expect(assistant.loads, 1);
+      expect(find.text('IXLand companion'), findsOneWidget);
+      expect(find.textContaining('Gemma 4 E2B on CPU'), findsOneWidget);
+
+      // The main app can't move the companion while the chat is open.
+      expect(await native.sendMove(tester, 0.1, 0.1), isFalse);
+
+      await tester.enterText(find.byType(TextField), 'Hi there');
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.pump();
+      expect(assistant.sent, ['Hi there']);
+      expect(find.text('Hi there'), findsOneWidget);
+      expect(find.text('…'), findsOneWidget);
+      assistant.reply
+        ..add('Hello')
+        ..add(', friend!');
+      await tester.pump();
+      expect(find.text('Hello, friend!'), findsOneWidget);
+      await assistant.reply.close();
+      await tester.pump();
+
+      await tester.tap(find.byTooltip('Close chat'));
+      await pumpFor(tester, const Duration(milliseconds: 400));
+      expect(native.calls('collapse'), hasLength(1));
+      expect(find.text('IXLand companion'), findsNothing);
+      expect((native.x, native.y, native.width), (880.0, 1000.0, 192.0));
+
+      // Reopening keeps the conversation in memory without loading again.
+      await tester.tap(companion);
+      await pumpFor(tester, const Duration(milliseconds: 400));
+      expect(find.text('Hello, friend!'), findsOneWidget);
+      expect(assistant.loads, 1);
+
+      // Back closes the open chat.
+      await native.pressBack(tester);
+      await pumpFor(tester, const Duration(milliseconds: 400));
+      expect(native.calls('collapse'), hasLength(2));
+      await finish(tester);
+    });
+
+    testWidgets('chat explains where to put a missing model', (tester) async {
+      assistant.loadResult = const AssistantState(
+        AssistantStatus.missing,
+        modelPath: '/sdcard/models/gemma-4-E2B-it.litertlm',
+      );
+      await enter(tester);
+      await tester.tap(companion);
+      await pumpFor(tester, const Duration(milliseconds: 400));
+      expect(find.text('Model file not found'), findsOneWidget);
+      expect(
+        find.textContaining('/sdcard/models/gemma-4-E2B-it.litertlm'),
+        findsOneWidget,
+      );
+      await tester.enterText(find.byType(TextField), 'Hello?');
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.pump();
+      expect(assistant.sent, isEmpty);
+      await tester.tap(find.byTooltip('Close chat'));
+      await pumpFor(tester, const Duration(milliseconds: 400));
       await finish(tester);
     });
 
@@ -473,7 +539,7 @@ void main() {
       // Inputs after closing are ignored.
       await tester.tap(companion);
       await pumpFor(tester, const Duration(milliseconds: 100));
-      expect(native.calls('showAlert'), isEmpty);
+      expect(native.calls('expand'), isEmpty);
       await finish(tester);
     });
 
@@ -501,13 +567,15 @@ void main() {
       await tester.tap(companion);
       await tester.fling(companion, const Offset(-60, 0), 1000);
       await pumpFor(tester, const Duration(milliseconds: 200));
-      expect(native.calls('showAlert'), isEmpty);
+      expect(native.calls('expand'), isEmpty);
       expect(native.calls('close'), isEmpty);
 
       await pumpFor(tester, const Duration(seconds: 2));
       await tester.tap(companion);
       await pumpFor(tester, const Duration(milliseconds: 400));
-      expect(native.calls('showAlert'), hasLength(1));
+      expect(native.calls('expand'), hasLength(1));
+      await native.pressBack(tester);
+      await pumpFor(tester, const Duration(milliseconds: 400));
       await finish(tester);
     });
 
@@ -638,6 +706,7 @@ class _FakeNativeWindow {
   double width = 192;
   double height = 192;
   CompanionLook look = const CompanionLook();
+  (double, double, double, double)? _collapsed;
 
   Iterable<MethodCall> calls(String method) =>
       log.where((call) => call.method == method);
@@ -675,6 +744,24 @@ class _FakeNativeWindow {
             case 'moveTo':
               x = (args['x'] as num).toDouble();
               y = (args['y'] as num).toDouble();
+            case 'expand':
+              _collapsed = (x, y, width, height);
+              x = 0;
+              y = 0;
+              width = 1080;
+              height = 2000;
+              return _layout();
+            case 'collapse':
+              final collapsed = _collapsed;
+              _collapsed = null;
+              if (collapsed != null) {
+                final (cx, cy, cw, ch) = collapsed;
+                x = cx;
+                y = cy;
+                width = cw;
+                height = ch;
+              }
+              return _layout();
             case 'resize':
               final w = (args['width'] as num).toDouble();
               final h = (args['height'] as num).toDouble();
@@ -714,6 +801,19 @@ class _FakeNativeWindow {
         );
     await tester.pump();
     return codec.decodeEnvelope(reply!);
+  }
+
+  /// Presses Back, as the service reports it while the window is expanded.
+  Future<void> pressBack(WidgetTester tester) async {
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          _channel.name,
+          const StandardMethodCodec().encodeMethodCall(
+            const MethodCall('backPressed'),
+          ),
+          (_) {},
+        );
+    await tester.pump();
   }
 
   void uninstall() {
@@ -811,4 +911,36 @@ class _FakeCompanionOverlay implements CompanionOverlay {
     if (failSaving) throw PlatformException(code: 'failed');
     savedLook = look;
   }
+}
+
+class _FakeAssistant implements AssistantEngine {
+  AssistantState loadResult = const AssistantState(
+    AssistantStatus.ready,
+    backend: 'cpu',
+    loadTime: Duration(milliseconds: 1500),
+  );
+  var loads = 0;
+  final sent = <String>[];
+  final reply = StreamController<String>();
+
+  @override
+  Future<AssistantState> status() async => loadResult;
+
+  @override
+  Future<AssistantState> load() async {
+    loads++;
+    return loadResult;
+  }
+
+  @override
+  Stream<String> send(String text) {
+    sent.add(text);
+    return reply.stream;
+  }
+
+  @override
+  Future<void> cancel() async {}
+
+  @override
+  Future<void> reset() async {}
 }

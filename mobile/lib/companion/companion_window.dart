@@ -64,11 +64,12 @@ class CompanionWindow {
   /// layout after rotation or a display change. [onMoveTo] receives a point in
   /// 0 to 1 screen coordinates from the main app and returns whether the
   /// companion accepted the move. [onLookChanged] receives a newly chosen
-  /// look.
+  /// look. [onBack] runs when Back is pressed while the window is expanded.
   void listen({
     required void Function(CompanionWindowLayout layout) onLayoutChanged,
     required bool Function(Offset uv) onMoveTo,
     required void Function(CompanionLook look) onLookChanged,
+    void Function()? onBack,
   }) {
     _channel.setMethodCallHandler((call) async {
       final args = call.arguments is Map ? call.arguments as Map : const {};
@@ -83,6 +84,9 @@ class CompanionWindow {
           return onMoveTo(Offset(u, v));
         case 'lookChanged':
           onLookChanged(CompanionLook.fromMap(args));
+          return null;
+        case 'backPressed':
+          onBack?.call();
           return null;
       }
       throw MissingPluginException(call.method);
@@ -101,6 +105,19 @@ class CompanionWindow {
     });
     return CompanionWindowLayout.fromMap(map ?? const {});
   }
+
+  /// Grows the window to the usable screen and lets it take keyboard focus.
+  /// Moves and resizes are ignored until [collapse]. Returns the new layout.
+  Future<CompanionWindowLayout> expand() async => CompanionWindowLayout.fromMap(
+    await _channel.invokeMapMethod<Object?, Object?>('expand') ?? const {},
+  );
+
+  /// Returns the window to where it was before [expand]. Returns the layout.
+  Future<CompanionWindowLayout> collapse() async =>
+      CompanionWindowLayout.fromMap(
+        await _channel.invokeMapMethod<Object?, Object?>('collapse') ??
+            const {},
+      );
 
   /// Plays a rising inflating sound for [duration].
   Future<void> playInflateSound(Duration duration) =>

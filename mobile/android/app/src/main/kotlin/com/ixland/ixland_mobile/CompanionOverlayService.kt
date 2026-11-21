@@ -6,6 +6,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.pm.ServiceInfo
 import android.content.Intent
 import android.content.res.Configuration
@@ -21,8 +22,10 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.ContextThemeWrapper
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.WindowInsets
 import android.view.WindowManager
+import android.widget.FrameLayout
 import io.flutter.FlutterInjector
 import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.android.RenderMode
@@ -39,8 +42,9 @@ import kotlin.math.sin
 /**
  * Hosts the companion in a small system overlay window.
  *
- * The window is only as large as the character, is never focusable, and lets touches outside its
- * bounds reach the app underneath. The character is drawn by a second Flutter engine that runs
+ * The window is only as large as the character, isn't focusable, and lets touches outside its
+ * bounds reach the app underneath. While the chat is open, the window expands to the usable screen
+ * and becomes focusable so the keyboard can type into it. The character is drawn by a second Flutter engine that runs
  * the `companionOverlayMain` entry point. Movement and gestures are decided in Dart, which calls
  * back through [WINDOW_CHANNEL].
  *
@@ -52,6 +56,10 @@ class CompanionOverlayService : Service() {
     private val windowManager by lazy { getSystemService(WINDOW_SERVICE) as WindowManager }
     private var engine: FlutterEngine? = null
     private var view: FlutterView? = null
+    private var root: OverlayRoot? = null
+    private var assistant: AssistantBridge? = null
+    /** The window's bounds before [expand], or null while the window is collapsed. */
+    private var collapsed: Rect? = null
     private var params: WindowManager.LayoutParams? = null
     private var channel: MethodChannel? = null
     private var dialog: AlertDialog? = null
@@ -96,9 +104,7 @@ class CompanionOverlayService : Service() {
             size,
             size,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            COLLAPSED_FLAGS,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -108,12 +114,15 @@ class CompanionOverlayService : Service() {
         }
         val view = FlutterView(this, RenderMode.texture, TransparencyMode.transparent)
         view.attachToFlutterEngine(engine)
-        windowManager.addView(view, params)
+        val root = OverlayRoot(this).apply { addView(view) }
+        windowManager.addView(root, params)
         engine.lifecycleChannel.appIsResumed()
 
         this.engine = engine
         this.channel = channel
+        this.assistant = AssistantBridge(this, engine.dartExecutor.binaryMessenger)
         this.view = view
+        this.root = root
         this.params = params
         return true
     }
@@ -124,8 +133,8 @@ class CompanionOverlayService : Service() {
             "getLook" -> result.success(CompanionPrefs.look(this))
             "moveTo" -> {
                 val params = params
-                val view = view
-                if (params == null || view == null) {
+                val root = root
+                if (params == null || root == null || collapsed != null) {
                     result.success(null)
                     return
                 }
@@ -134,13 +143,13 @@ class CompanionOverlayService : Service() {
                 // Horizontal positions may leave the screen so the character can walk off.
                 params.y = (call.argument<Number>("y")?.toInt() ?: params.y)
                     .coerceIn(screen.top, maxOf(screen.top, screen.bottom - params.height))
-                windowManager.updateViewLayout(view, params)
+                windowManager.updateViewLayout(root, params)
                 result.success(null)
             }
             "resize" -> {
                 val params = params
-                val view = view
-                if (params == null || view == null) {
+                val root = root
+                if (params == null || root == null || collapsed != null) {
                     result.success(layout())
                     return
                 }
@@ -156,7 +165,15 @@ class CompanionOverlayService : Service() {
                     .coerceIn(screen.top, maxOf(screen.top, screen.bottom - height))
                 params.width = width
                 params.height = height
-                windowManager.updateViewLayout(view, params)
+                windowManager.updateViewLayout(root, params)
+                result.success(layout())
+            }
+            "expand" -> {
+                expand()
+                result.success(layout())
+            }
+            "collapse" -> {
+                collapse()
                 result.success(layout())
             }
             "playInflateSound" -> {
@@ -180,6 +197,56 @@ class CompanionOverlayService : Service() {
                 mainHandler.post(::hide)
             }
             else -> result.notImplemented()
+        }
+    }
+
+    /**
+     * Grows the window to the usable screen and makes it focusable for the chat. [collapse]
+     * restores the earlier bounds.
+     */
+    private fun expand() {
+        val params = params ?: return
+        val root = root ?: return
+        if (collapsed == null) {
+            collapsed = Rect(params.x, params.y, params.x + params.width, params.y + params.height)
+        }
+        fitToScreen(params)
+        params.flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        windowManager.updateViewLayout(root, params)
+        view?.requestFocus()
+    }
+
+    private fun collapse() {
+        val params = params ?: return
+        val root = root ?: return
+        val bounds = collapsed ?: return
+        collapsed = null
+        params.x = bounds.left
+        params.y = bounds.top
+        params.width = bounds.width()
+        params.height = bounds.height()
+        params.flags = COLLAPSED_FLAGS
+        params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
+        windowManager.updateViewLayout(root, params)
+    }
+
+    private fun fitToScreen(params: WindowManager.LayoutParams) {
+        val screen = screenBounds()
+        params.x = screen.left
+        params.y = screen.top
+        params.width = screen.width()
+        params.height = screen.height()
+    }
+
+    /** Sends Back to the overlay while the chat is open, instead of to the app underneath. */
+    private inner class OverlayRoot(context: Context) : FrameLayout(context) {
+        override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+            if (event.keyCode == KeyEvent.KEYCODE_BACK && collapsed != null) {
+                if (event.action == KeyEvent.ACTION_UP) channel?.invokeMethod("backPressed", null)
+                return true
+            }
+            return super.dispatchKeyEvent(event)
         }
     }
 
@@ -257,12 +324,22 @@ class CompanionOverlayService : Service() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         val params = params ?: return
-        val view = view ?: return
-        // Keep the character on screen after rotation or a display change.
+        val root = root ?: return
         val screen = screenBounds()
-        params.x = params.x.coerceIn(screen.left, maxOf(screen.left, screen.right - params.width))
-        params.y = params.y.coerceIn(screen.top, maxOf(screen.top, screen.bottom - params.height))
-        windowManager.updateViewLayout(view, params)
+        if (collapsed != null) {
+            // The open chat fills the new screen. Collapsing returns to the old spot, clamped.
+            fitToScreen(params)
+            collapsed = collapsed?.let {
+                val x = it.left.coerceIn(screen.left, maxOf(screen.left, screen.right - it.width()))
+                val y = it.top.coerceIn(screen.top, maxOf(screen.top, screen.bottom - it.height()))
+                Rect(x, y, x + it.width(), y + it.height())
+            }
+        } else {
+            // Keep the character on screen after rotation or a display change.
+            params.x = params.x.coerceIn(screen.left, maxOf(screen.left, screen.right - params.width))
+            params.y = params.y.coerceIn(screen.top, maxOf(screen.top, screen.bottom - params.height))
+        }
+        windowManager.updateViewLayout(root, params)
         channel?.invokeMethod("layoutChanged", layout())
     }
 
@@ -296,12 +373,16 @@ class CompanionOverlayService : Service() {
         dialog = null
         channel?.setMethodCallHandler(null)
         channel = null
-        view?.let {
-            windowManager.removeView(it)
-            it.detachFromFlutterEngine()
-        }
+        assistant?.close()
+        assistant = null
+        // Free the model's memory. The chat lives only as long as the window.
+        AssistantEngine.unload()
+        root?.let { windowManager.removeView(it) }
+        root = null
+        view?.detachFromFlutterEngine()
         view = null
         params = null
+        collapsed = null
         engine?.destroy()
         engine = null
     }
@@ -400,5 +481,9 @@ class CompanionOverlayService : Service() {
         /** Must match `companionWindowSize` in `companion_actions.dart`. */
         private const val WINDOW_SIZE_DP = 192
         private const val SAMPLE_RATE = 22_050
+        private const val COLLAPSED_FLAGS =
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
     }
 }
