@@ -379,8 +379,8 @@ In **Settings → Companion style → Bot**, **Shape** picks a **Green circle** 
 | Emotion | Face | Body |
 | --- | --- | --- |
 | Surprised | Wide, round eyes looking straight out | Quick startled hop that stretches the body |
-| Laughing | Eyes squeezed into arches, head tilted back | Fast small bounces with a side-to-side wobble |
-| Scared | Tall, worried, trembling eyes looking down, gaze darting | Shrinks, leans back, and turns a little paler |
+| Laughing | Eyes squeezed into arches, head tilted back | About three small bounces a second with a side-to-side wobble |
+| Scared | Round, worried, slowly trembling eyes looking down, gaze darting | Shrinks, leans back, and turns a little paler |
 | Confused | One eye open and one squinting, glancing away | Tilts its head and sways slowly |
 | Happy | Smiling arches looking up | A few springy hops |
 

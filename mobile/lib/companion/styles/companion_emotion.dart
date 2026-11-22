@@ -36,11 +36,11 @@ class EmotionMotion {
     // laughing: fast little bounces with a side-to-side wobble.
     final laughing = pose.amountOf(CompanionEmotion.laughing);
     if (laughing > 0) {
-      final shake = math.sin(wave * 4).abs();
+      final shake = math.sin(wave * 1.6).abs();
       lift += laughing * shake * 0.12;
       scaleX *= 1 + laughing * (1 - shake) * 0.06;
       scaleY *= 1 - laughing * (1 - shake) * 0.06;
-      rotation += laughing * math.sin(wave * 2.5) * 0.07;
+      rotation += laughing * math.sin(wave * 1.2) * 0.07;
     }
 
     // scared: shrinks and leans away from where it faces. Styles tremble
@@ -116,8 +116,8 @@ Offset emotionEyeShake(CompanionPose pose, double side) {
   if (scared == 0) return Offset.zero;
   final time = 2 * math.pi * pose.emotionTime;
   return Offset(
-        math.sin(time * 19 + side * 1.3) * 0.035,
-        math.cos(time * 23 + side * 0.7) * 0.025,
+        math.sin(time * 6 + side * 1.3) * 0.035,
+        math.cos(time * 7.5 + side * 0.7) * 0.025,
       ) *
       scared;
 }

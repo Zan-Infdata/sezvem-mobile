@@ -433,9 +433,9 @@ class _Face {
       yaw: 4,
       pitch: 16,
     ),
-    // Tall worried eyes, looking down and away.
+    // Big round worried eyes, looking down and away.
     CompanionEmotion.scared => const _Face.both(
-      _Eye(0.28, 0.52, tilt: -10),
+      _Eye(0.36, 0.4, tilt: -10),
       split: 20,
       yaw: -10,
       pitch: -14,
