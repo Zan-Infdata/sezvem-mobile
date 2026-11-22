@@ -12,6 +12,8 @@ Configure the full POST endpoint with `BATCH_API_URL` and set the patient ID in 
 
 **Create patient** posts a name to `POST /patients` and uses the server-assigned `patient_id` from the HTTP 201 response for new readings. See [patient creation setup](mobile-implementation.md#create-a-patient-through-the-api).
 
+Each batch POST also starts a concurrent `GET /states` on the same API base URL. The documented HTTP 200 response is an array of every `MonitoringState`, sorted by `patient_id` and `state_id`. The app reads and discards the response body. The POST response alone determines batch acceptance. [Deployed OpenAPI schema](https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/openapi.json)
+
 Every mobile batch includes `sample_timestamps` as a top-level array of UTC ISO 8601 strings. Entry `i` is the phone's receipt time for `hr[i]`. A batch with no heart-rate entries uses an empty array. See [sample timestamp verification](mobile-implementation.md#heart-rate-sample-timestamps).
 
 The app sends an estimated sleep window as a pair of UTC timestamp strings in `extra.sleep_start` and `extra.sleep_end`. An estimate can accompany a regular batch or travel in a batch with an empty `sample_timestamps` array. Regular batches omit the pair. See [sleep estimation](mobile-implementation.md#heart-rate-only-sleep-estimation).

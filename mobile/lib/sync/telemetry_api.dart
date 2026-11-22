@@ -87,7 +87,9 @@ class TelemetryApi {
       request.contentLength = body.length;
       deliveryStarted = true;
       request.add(body);
-      final response = await request.close().timeout(_timeout);
+      final upload = request.close();
+      unawaited(_fetchMonitoringStates(endpoint));
+      final response = await upload.timeout(_timeout);
       final status = response.statusCode;
       if (status == HttpStatus.created) {
         _unconfirmed.remove(batchKey);
@@ -112,6 +114,27 @@ class TelemetryApi {
       return _transportFailure(batchKey, deliveryStarted);
     } on FormatException {
       return _transportFailure(batchKey, deliveryStarted);
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> _fetchMonitoringStates(Uri batchEndpoint) async {
+    final segments = batchEndpoint.pathSegments.toList();
+    if (segments.isNotEmpty && segments.last.isEmpty) segments.removeLast();
+    if (segments.isNotEmpty) segments.removeLast();
+    final endpoint = batchEndpoint.replace(
+      pathSegments: [...segments, 'states'],
+    );
+    final client = HttpClient()..connectionTimeout = _timeout;
+    try {
+      final request = await client.getUrl(endpoint).timeout(_timeout);
+      request.followRedirects = false;
+      request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
+      final response = await request.close().timeout(_timeout);
+      await response.drain<void>().timeout(_timeout);
+    } on Exception {
+      // The states fetch is independent of batch delivery.
     } finally {
       client.close(force: true);
     }

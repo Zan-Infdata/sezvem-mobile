@@ -346,3 +346,9 @@ Decisions:
 - The system instruction asks for brief plain-text replies and to direct health concerns to the care team. Personalization and API tools come later.
 
 To verify, copy the model to the phone as described in [On-device Gemma model files](#on-device-gemma-model-files), then install the app, show the companion, and tap it. Check load and reply timings with `adb logcat -s AssistantEngine`. If the model file is missing, the chat shows the path the app expects. `flutter test test/assistant_chat_test.dart test/companion_test.dart` covers the chat state, the channel protocol, opening and closing the chat, streaming, Back, and the missing-model message.
+
+## Fetch monitoring states with telemetry
+
+When `TelemetryApi` sends a batch, it also calls `GET /states` at the base URL configured by `BATCH_API_URL`. With the default URL, this is `GET /api/states`. The fetch runs concurrently with the POST, including on retries. Debug jam and a missing patient ID prevent the POST and its companion request. The app consumes and discards the response body without decoding or storing it. The batch acknowledgment depends on the POST alone, so a slow or failed fetch leaves upload and retry behavior intact.
+
+From `mobile/`, run `flutter test test/telemetry_api_test.dart`. The loopback server checks that both requests arrive before it acknowledges the POST and that the batch is accepted while the GET is still pending. The test sends a fetch error after acknowledgment and uses synthetic data throughout.

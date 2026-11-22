@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -14,6 +15,12 @@ void main() {
           <({String method, String path, String? mimeType, Object? body})>[];
       var status = HttpStatus.created;
       server.listen((request) async {
+        if (request.method == 'GET') {
+          request.response.headers.contentType = ContentType.json;
+          request.response.write('[]');
+          await request.response.close();
+          return;
+        }
         requests.add((
           method: request.method,
           path: request.uri.path,
@@ -84,6 +91,43 @@ void main() {
       expect(requests.last.body, payload);
     },
   );
+
+  test('fetches all states alongside the POST without delaying it', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final batchRequest = Completer<HttpRequest>();
+    final statesRequest = Completer<HttpRequest>();
+    server.listen((request) async {
+      if (request.method == 'GET') {
+        statesRequest.complete(request);
+      } else {
+        await request.drain<void>();
+        batchRequest.complete(request);
+      }
+    });
+    final api = TelemetryApi(
+      url: 'http://127.0.0.1:${server.port}/custom/api/batches/',
+    );
+    const deadline = Duration(seconds: 5);
+
+    final upload = api.send({
+      'patient_id': 'fixture-patient',
+      'batch_number': 1,
+    });
+    final batch = await batchRequest.future.timeout(deadline);
+    final states = await statesRequest.future.timeout(deadline);
+    expect(batch.uri.path, '/custom/api/batches/');
+    expect(states.uri.path, '/custom/api/states');
+    expect(states.uri.hasQuery, isFalse);
+    expect(states.headers.value(HttpHeaders.acceptHeader), 'application/json');
+
+    batch.response.statusCode = HttpStatus.created;
+    await batch.response.close();
+    expect((await upload.timeout(deadline)).accepted, isTrue);
+
+    states.response.statusCode = HttpStatus.serviceUnavailable;
+    await states.response.close();
+  });
 
   test('requires explicit patient and endpoint configuration', () async {
     final noPatient = TelemetryApi(url: 'https://example.test/batches');
