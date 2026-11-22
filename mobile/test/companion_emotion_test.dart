@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ixland_mobile/companion/companion_animator.dart';
 import 'package:ixland_mobile/companion/companion_state.dart';
-import 'package:ixland_mobile/companion/companion_test_actions.dart';
 
 void main() {
   testWidgets('an emotion eases in, holds, eases out, and clears', (
@@ -43,11 +42,6 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     expect(animator.emotion, isNull);
     animator.dispose();
-  });
-
-  test('swiping down shows sadness, then every emotion', () {
-    expect(moodShowcase, hasLength(1 + CompanionEmotion.values.length));
-    expect(moodShowcase.first, beSad);
   });
 
   test('every emotion has a duration longer than its fades', () {

@@ -117,10 +117,7 @@ class DressUpCompanionStyle extends CompanionStyle {
     // Emotions move the whole body. See [EmotionMotion].
     final motion = EmotionMotion.of(pose, direction);
     final lift = bob * radius * 0.18 + jump * jumpHeight + motion.lift * radius;
-    final center = Offset(
-      size.width / 2 + motion.shiftX * radius,
-      groundY - radius - lift,
-    );
+    final center = Offset(size.width / 2, groundY - radius - lift);
 
     final shadow = 1 - jump * 0.6;
     canvas.drawOval(
@@ -179,10 +176,12 @@ class DressUpCompanionStyle extends CompanionStyle {
     final dark = Paint()..color = const Color(0xFF263238);
     for (final side in [-1.0, 1.0]) {
       // blink closes the eyes. sad lowers and narrows them.
-      final eye = Offset(
-        side * radius * base.eyeSpacing + look,
-        radius * (base.eyeY + pose.sad * 0.06),
-      );
+      final eye =
+          Offset(
+            side * radius * base.eyeSpacing + look,
+            radius * (base.eyeY + pose.sad * 0.06),
+          ) +
+          emotionEyeShake(pose, side) * radius;
       // Emotions widen, squeeze, or unbalance the eyes.
       final scale = emotionEyeScale(pose, side);
       final eyeHeight =

@@ -619,64 +619,73 @@ void main() {
       await finish(tester);
     });
 
-    testWidgets('swipe up backflips with room above, then shrinks back', (
-      tester,
+    /// Checks that a reaction started by [start] ignores a tap meanwhile
+    /// and lets a tap open the chat after [length].
+    Future<void> blocksInputsFor(
+      WidgetTester tester,
+      Duration length,
+      Future<void> Function() start,
     ) async {
       await enter(tester);
-      await tester.fling(companion, const Offset(0, -60), 1000);
-      await pumpFor(tester, const Duration(seconds: 1));
-      expect(native.calls('resize').map((c) => c.arguments), [
-        {'width': 192.0, 'height': 320.0},
-        {'width': 192.0, 'height': 192.0},
-      ]);
-      expect(native.calls('close'), isEmpty);
-      await finish(tester);
-    });
-
-    testWidgets('swipe down is sad for two seconds and blocks inputs', (
-      tester,
-    ) async {
-      await enter(tester);
-      await tester.fling(companion, const Offset(0, 60), 1000);
-      await pumpFor(tester, const Duration(seconds: 1));
-
+      await start();
+      await pumpFor(tester, length - const Duration(milliseconds: 400));
       await tester.tap(companion);
       await tester.fling(companion, const Offset(-60, 0), 1000);
       await pumpFor(tester, const Duration(milliseconds: 200));
       expect(native.calls('expand'), isEmpty);
       expect(native.calls('close'), isEmpty);
+      // Emotions play inside the normal window.
+      expect(native.calls('resize'), isEmpty);
+      expect(native.calls('playInflateSound'), isEmpty);
 
-      await pumpFor(tester, const Duration(seconds: 2));
+      await pumpFor(tester, const Duration(milliseconds: 400));
       await tester.tap(companion);
       await pumpFor(tester, const Duration(milliseconds: 1300));
       expect(native.calls('expand'), hasLength(1));
       await native.pressBack(tester);
       await pumpFor(tester, const Duration(milliseconds: 1300));
       await finish(tester);
+    }
+
+    testWidgets('swipe up is scared and blocks inputs meanwhile', (
+      tester,
+    ) async {
+      await blocksInputsFor(
+        tester,
+        CompanionAnimator.emotionDuration(CompanionEmotion.scared),
+        () => tester.fling(companion, const Offset(0, -60), 1000),
+      );
     });
 
-    testWidgets('hold inflates with a sound until released', (tester) async {
+    testWidgets('swipe down laughs and blocks inputs meanwhile', (
+      tester,
+    ) async {
+      await blocksInputsFor(
+        tester,
+        CompanionAnimator.emotionDuration(CompanionEmotion.laughing),
+        () => tester.fling(companion, const Offset(0, 60), 1000),
+      );
+    });
+
+    testWidgets('hold is sad until released', (tester) async {
       await enter(tester);
       final gesture = await tester.startGesture(tester.getCenter(companion));
-      await pumpFor(tester, const Duration(seconds: 1));
-      expect(native.calls('playInflateSound').single.arguments, {
-        'durationMs': 2000,
-      });
-      expect(native.calls('resize').single.arguments, {
-        'width': 272.0,
-        'height': 272.0,
-      });
-
-      // Inputs are still ignored while it shrinks back.
-      await gesture.up();
+      // Still sad while held, however long that is.
+      await pumpFor(tester, const Duration(seconds: 3));
       await tester.fling(companion, const Offset(-60, 0), 1000);
-      await pumpFor(tester, const Duration(milliseconds: 500));
-      expect(native.calls('stopSound'), isNotEmpty);
-      expect(native.calls('resize').last.arguments, {
-        'width': 192.0,
-        'height': 192.0,
-      });
+      await pumpFor(tester, const Duration(milliseconds: 200));
       expect(native.calls('close'), isEmpty);
+      expect(native.calls('resize'), isEmpty);
+      expect(native.calls('playInflateSound'), isEmpty);
+
+      // Sadness fades out over a quarter second after release.
+      await gesture.up();
+      await pumpFor(tester, const Duration(milliseconds: 400));
+      await tester.tap(companion);
+      await pumpFor(tester, const Duration(milliseconds: 1300));
+      expect(native.calls('expand'), hasLength(1));
+      await native.pressBack(tester);
+      await pumpFor(tester, const Duration(milliseconds: 1300));
       await finish(tester);
     });
 

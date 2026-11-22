@@ -8,8 +8,7 @@ import '../companion_state.dart';
 import 'companion_emotion.dart';
 import 'companion_style.dart';
 
-/// A solid shape whose eyes are cut out of it, so whatever is behind the
-/// companion shows through them.
+/// A solid shape with two white rounded-bar eyes.
 ///
 /// The eyes sit on an imagined sphere inside the body. Turning the gaze moves
 /// them across the body and foreshortens them, which makes a flat shape look
@@ -82,10 +81,7 @@ class BotCompanionStyle extends CompanionStyle {
     final motion = EmotionMotion.of(pose, direction);
 
     final lift = bob * radius * 0.18 + jump * jumpHeight + motion.lift * radius;
-    final center = Offset(
-      size.width / 2 + motion.shiftX * radius,
-      groundY - radius - lift,
-    );
+    final center = Offset(size.width / 2, groundY - radius - lift);
 
     // The shadow shrinks as the character leaves the ground.
     final shadow = 1 - (jump * 0.6 + motion.lift).clamp(0.0, 0.7);
@@ -109,23 +105,23 @@ class BotCompanionStyle extends CompanionStyle {
     motion.applyAtFeet(canvas, radius);
 
     final outline = shape.outline(radius);
-    final eyes = _eyes(_face(pose, direction), radius, pose.blink);
-    final body = Path.combine(PathOperation.difference, outline, eyes);
-
-    // sad turns the body blue, and fear drains some of its colour.
-    final pale = (pose.sad + pose.amountOf(CompanionEmotion.scared) * 0.45)
-        .clamp(0.0, 1.0);
+    // Moods only shift the shade: sadness dulls it and fear makes it paler.
+    final scared = pose.amountOf(CompanionEmotion.scared);
     canvas.drawPath(
-      body,
+      outline,
       Paint()
         ..shader = RadialGradient(
           center: const Alignment(-0.35, -0.45),
           radius: 0.8,
           colors: [
-            Color.lerp(shape.light, shape.sadLight, pale)!,
-            Color.lerp(shape.dark, shape.sadDark, pale)!,
+            _shade(shape.light, pose.sad, scared),
+            _shade(shape.dark, pose.sad, scared),
           ],
         ).createShader(outline.getBounds()),
+    );
+    canvas.drawPath(
+      _eyes(_face(pose, direction), radius, pose),
+      Paint()..color = const Color(0xFFFFFFFF),
     );
     canvas.restore();
   }
@@ -154,8 +150,22 @@ class BotCompanionStyle extends CompanionStyle {
     );
   }
 
-  /// Both eye holes, in body coordinates.
-  Path _eyes(_Face face, double radius, double blink) {
+  /// [color] a little duller for [sad] and a little paler for [scared],
+  /// both from 0 to 1. The hue stays the same.
+  static Color _shade(Color color, double sad, double scared) {
+    final hsl = HSLColor.fromColor(color);
+    return hsl
+        .withSaturation(
+          (hsl.saturation * (1 - sad * 0.35 - scared * 0.3)).clamp(0.0, 1.0),
+        )
+        .withLightness(
+          (hsl.lightness - sad * 0.06 + scared * 0.1).clamp(0.0, 1.0),
+        )
+        .toColor();
+  }
+
+  /// Both eyes, in body coordinates.
+  Path _eyes(_Face face, double radius, CompanionPose pose) {
     // Turn the face: yaw around the vertical axis, pitch up and down, then
     // roll. Screen x points right, y down, and z toward the viewer.
     final yaw = _rad(face.yaw),
@@ -174,6 +184,7 @@ class BotCompanionStyle extends CompanionStyle {
     );
 
     final scale = radius * shape.faceScale;
+    final blink = pose.blink;
     final eyes = Path();
     for (final side in [-1.0, 1.0]) {
       final eye = side < 0 ? face.left : face.right;
@@ -190,13 +201,15 @@ class BotCompanionStyle extends CompanionStyle {
         _rad(eye.tilt * -side),
       );
       // Lay the flat eye on the sphere's surface at its position.
+      // scared: each eye trembles on its own.
+      final shake = emotionEyeShake(pose, side) * scale;
       final onSphere = _affine(
         across.x,
         across.y,
         down.x,
         down.y,
-        normal.x * scale,
-        normal.y * scale + shape.faceY * radius,
+        normal.x * scale + shake.dx,
+        normal.y * scale + shape.faceY * radius + shake.dy,
       );
       eyes.addPath(hole.transform(onSphere), Offset.zero);
     }
@@ -219,11 +232,9 @@ abstract class BotShape {
   String get id;
   String get name;
 
-  /// Body colours: highlight and shade, then the same when fully sad.
+  /// Body colours: highlight and shade.
   Color get light;
   Color get dark;
-  Color get sadLight;
-  Color get sadDark;
 
   /// Radius relative to [BotCompanionStyle.bodyRadius]. A wide shape is
   /// smaller so it fits its window while inflated.
@@ -262,10 +273,6 @@ class BotCircle extends BotShape {
   Color get light => const Color(0xFF80CBC4);
   @override
   Color get dark => const Color(0xFF00897B);
-  @override
-  Color get sadLight => const Color(0xFF9FA8DA);
-  @override
-  Color get sadDark => const Color(0xFF5C6BC0);
 
   @override
   Path outline(double radius) =>
@@ -285,10 +292,6 @@ class BotTriangle extends BotShape {
   Color get light => const Color(0xFFFFCC80);
   @override
   Color get dark => const Color(0xFFEF6C00);
-  @override
-  Color get sadLight => const Color(0xFFB0BEC5);
-  @override
-  Color get sadDark => const Color(0xFF546E7A);
 
   @override
   double get size => 0.85;

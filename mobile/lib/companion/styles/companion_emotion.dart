@@ -13,7 +13,6 @@ import 'companion_style.dart';
 class EmotionMotion {
   const EmotionMotion({
     this.lift = 0,
-    this.shiftX = 0,
     this.scaleX = 1,
     this.scaleY = 1,
     this.rotation = 0,
@@ -23,7 +22,7 @@ class EmotionMotion {
   factory EmotionMotion.of(CompanionPose pose, double direction) {
     final t = pose.emotionTime;
     final wave = 2 * math.pi * t;
-    var lift = 0.0, shiftX = 0.0, scaleX = 1.0, scaleY = 1.0, rotation = 0.0;
+    var lift = 0.0, scaleX = 1.0, scaleY = 1.0, rotation = 0.0;
 
     // surprised: a quick startled hop that stretches the body upward.
     final surprised = pose.amountOf(CompanionEmotion.surprised);
@@ -44,12 +43,12 @@ class EmotionMotion {
       rotation += laughing * math.sin(wave * 2.5) * 0.07;
     }
 
-    // scared: shrinks, leans away from where it faces, and trembles.
+    // scared: shrinks and leans away from where it faces. Styles tremble
+    // the eyes.
     final scared = pose.amountOf(CompanionEmotion.scared);
     if (scared > 0) {
       scaleX *= 1 - scared * 0.1;
       scaleY *= 1 - scared * 0.12;
-      shiftX += scared * math.sin(wave * 16) * 0.04;
       rotation -= scared * direction * 0.06;
     }
 
@@ -69,7 +68,6 @@ class EmotionMotion {
 
     return EmotionMotion(
       lift: lift,
-      shiftX: shiftX,
       scaleX: scaleX,
       scaleY: scaleY,
       rotation: rotation,
@@ -77,14 +75,13 @@ class EmotionMotion {
   }
 
   final double lift;
-  final double shiftX;
   final double scaleX;
   final double scaleY;
   final double rotation;
 
   /// Applies the squash, stretch, and rotation around the feet at `y = feetY`
-  /// in the current canvas coordinates. Apply [lift] and [shiftX] to the body
-  /// center before this.
+  /// in the current canvas coordinates. Apply [lift] to the body center before
+  /// this.
   void applyAtFeet(Canvas canvas, double feetY) {
     canvas.translate(0, feetY);
     canvas.rotate(rotation);
@@ -110,4 +107,17 @@ Size emotionEyeScale(CompanionPose pose, double side) {
   height *= 1 + confused * (side < 0 ? 0.2 : -0.4);
   height *= 1 - pose.amountOf(CompanionEmotion.happy) * 0.45;
   return Size(width, height);
+}
+
+/// How far fear shakes the eye on [side], -1 left or 1 right, in multiples
+/// of the body radius. Zero unless the companion is scared.
+Offset emotionEyeShake(CompanionPose pose, double side) {
+  final scared = pose.amountOf(CompanionEmotion.scared);
+  if (scared == 0) return Offset.zero;
+  final time = 2 * math.pi * pose.emotionTime;
+  return Offset(
+        math.sin(time * 19 + side * 1.3) * 0.035,
+        math.cos(time * 23 + side * 0.7) * 0.025,
+      ) *
+      scared;
 }

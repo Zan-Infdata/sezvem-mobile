@@ -4,30 +4,33 @@ import 'companion_actions.dart';
 import 'companion_state.dart';
 import 'styles/companion_style.dart';
 
-/// Actions for the six companion inputs. Tap opens the chat. The others are
-/// tests. Each swipe down plays the next of [moodShowcase].
+/// Actions for the six companion inputs. Tap opens the chat, side swipes
+/// send the companion away, and the rest show emotions.
 ///
-/// Replace these with real behavior by mapping an input to another
-/// [CompanionAction].
-Map<CompanionInput, CompanionAction> testCompanionActions() {
-  var nextMood = 0;
-  return {
-    CompanionInput.tap: chat,
-    CompanionInput.swipeLeft: (context) => leave(context, toLeft: true),
-    CompanionInput.swipeRight: (context) => leave(context, toLeft: false),
-    CompanionInput.swipeUp: backflip,
-    CompanionInput.swipeDown: (context) =>
-        moodShowcase[nextMood++ % moodShowcase.length](context),
-    CompanionInput.hold: inflate,
-  };
+/// [backflip] and [inflate] are kept for later but have no input. Replace
+/// these with real behavior by mapping an input to another [CompanionAction].
+Map<CompanionInput, CompanionAction> testCompanionActions() => {
+  CompanionInput.tap: chat,
+  CompanionInput.swipeLeft: (context) => leave(context, toLeft: true),
+  CompanionInput.swipeRight: (context) => leave(context, toLeft: false),
+  CompanionInput.swipeUp: (context) => emote(context, CompanionEmotion.scared),
+  CompanionInput.swipeDown: (context) =>
+      emote(context, CompanionEmotion.laughing),
+  CompanionInput.hold: sadWhileHeld,
+};
+
+/// Plays [emotion] once. Other inputs are ignored meanwhile.
+Future<void> emote(CompanionActionContext context, CompanionEmotion emotion) {
+  context.animator.state = CompanionState.reacting;
+  return context.animator.emote(emotion);
 }
 
-/// Sadness and then each emotion, in the order swiping down plays them.
-final moodShowcase = <CompanionAction>[
-  beSad,
-  for (final emotion in CompanionEmotion.values)
-    (context) => context.animator.emote(emotion),
-];
+/// Looks sad until the finger lifts.
+Future<void> sadWhileHeld(CompanionActionContext context) async {
+  await context.animator.setMood(CompanionMood.sad);
+  await context.released;
+  await context.animator.setMood(CompanionMood.normal);
+}
 
 /// How much faster than walking the companion moves to and from the chat.
 const chatMoveSpeedFactor = 8.0;
@@ -81,14 +84,7 @@ Future<void> backflip(CompanionActionContext context) async {
   );
 }
 
-/// Looks sad for two seconds. Other inputs are ignored meanwhile.
-Future<void> beSad(CompanionActionContext context) async {
-  await context.animator.setMood(CompanionMood.sad);
-  await Future<void>.delayed(const Duration(seconds: 2));
-  await context.animator.setMood(CompanionMood.normal);
-}
-
-/// How large the hold action lets the character grow.
+/// How large [inflate] lets the character grow.
 const inflateLimit = CompanionStyle.maxInflate;
 
 /// How long it takes to grow to [inflateLimit].
