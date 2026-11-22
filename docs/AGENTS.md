@@ -9,6 +9,7 @@ The current implementation is in `mobile/`. It covers placeholder sign-in and he
 | `docs/` | All Markdown files and project decisions. The root `AGENTS.md` (Codex) and `CLAUDE.md` (Claude Code) are both symlinks to this guide. |
 | `mobile/` | Flutter patient app, wearable adapters, sync, and recovery UI. |
 | `mobile/android/wear/` | Android Wear OS companion for the Galaxy Watch, built as a separate APK. |
+| `video/` | Remotion promo videos for ŠEzVEM featuring Kevin, separate from the app. See "Promo video (Remotion)" in `docs/mobile-implementation.md`. |
 | `docs/mobile-implementation.md` | What the Flutter app implements, implementation decisions, and how to run and verify it. |
 | `docs/architecture.md` | Patient journey, mobile module boundaries, and the external backend and dashboard. |
 | `docs/contracts.md` | Metric batch POST payload, configurable upload cadence, recovery status interface, and backend handoff. |
