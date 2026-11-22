@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../settings/patient_settings.dart';
+import 'monitoring_state.dart';
 
 typedef TelemetryUploadResult = ({bool accepted, String status});
 
@@ -17,7 +18,12 @@ class TelemetryApi {
 
   final Uri? _endpoint;
   final _unconfirmed = <(String, int)>{};
+  final _states = StreamController<MonitoringSnapshot>.broadcast();
+  final _latestStateResponse = <String, int>{};
+  int _stateRequestNumber = 0;
   static const _timeout = Duration(seconds: 10);
+
+  Stream<MonitoringSnapshot> get monitoringStates => _states.stream;
 
   Map<String, Object?> payloadFor(Map<String, Object?> batch) {
     final temperatures = (batch['temperature'] as List<double>)
@@ -88,7 +94,7 @@ class TelemetryApi {
       deliveryStarted = true;
       request.add(body);
       final upload = request.close();
-      unawaited(_fetchMonitoringStates(endpoint));
+      unawaited(_fetchMonitoringStates(endpoint, patientId));
       final response = await upload.timeout(_timeout);
       final status = response.statusCode;
       if (status == HttpStatus.created) {
@@ -119,12 +125,16 @@ class TelemetryApi {
     }
   }
 
-  Future<void> _fetchMonitoringStates(Uri batchEndpoint) async {
+  Future<void> _fetchMonitoringStates(
+    Uri batchEndpoint,
+    String patientId,
+  ) async {
+    final requestNumber = ++_stateRequestNumber;
     final segments = batchEndpoint.pathSegments.toList();
     if (segments.isNotEmpty && segments.last.isEmpty) segments.removeLast();
     if (segments.isNotEmpty) segments.removeLast();
     final endpoint = batchEndpoint.replace(
-      pathSegments: [...segments, 'states'],
+      pathSegments: [...segments, 'patients', patientId, 'states'],
     );
     final client = HttpClient()..connectionTimeout = _timeout;
     try {
@@ -132,7 +142,22 @@ class TelemetryApi {
       request.followRedirects = false;
       request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
       final response = await request.close().timeout(_timeout);
-      await response.drain<void>().timeout(_timeout);
+      if (response.statusCode != HttpStatus.ok) return;
+      final body = await utf8.decoder.bind(response).join().timeout(_timeout);
+      final json = jsonDecode(body);
+      if (json is! List ||
+          requestNumber < (_latestStateResponse[patientId] ?? 0)) {
+        return;
+      }
+      _latestStateResponse[patientId] = requestNumber;
+      _states.add((
+        patientId: patientId,
+        states: [
+          for (final item in json)
+            if (MonitoringState.fromJson(item, patientId) case final state?)
+              state,
+        ],
+      ));
     } on Exception {
       // The states fetch is independent of batch delivery.
     } finally {

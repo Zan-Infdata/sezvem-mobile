@@ -8,6 +8,7 @@ import 'package:ixland_mobile/devices/connected_devices_screen.dart';
 import 'package:ixland_mobile/devices/provider_catalog.dart';
 import 'package:ixland_mobile/main.dart';
 import 'package:ixland_mobile/settings/patient_settings.dart';
+import 'package:ixland_mobile/sync/monitoring_state.dart';
 import 'package:ixland_mobile/sync/telemetry_api.dart';
 import 'package:ixland_mobile/wearables/metric_batch_buffer.dart';
 import 'package:ixland_mobile/wearables/wearable_adapter.dart';
@@ -61,12 +62,30 @@ void main() {
     );
     const settingsChannel = MethodChannel('ixland/patient_settings');
     const companionChannel = MethodChannel('ixland/companion');
+    const dismissalsChannel = MethodChannel('ixland/companion/dismissed');
     final messenger = tester.binding.defaultBinaryMessenger;
+    var companionShowing = false;
+    final monitoringAlerts = <Object?>[];
     messenger.setMockMethodCallHandler(settingsChannel, (call) async => null);
-    messenger.setMockMethodCallHandler(companionChannel, (call) async => null);
+    messenger.setMockMethodCallHandler(companionChannel, (call) async {
+      switch (call.method) {
+        case 'hasPermission':
+          return true;
+        case 'isShowing':
+          return companionShowing;
+        case 'show':
+          return companionShowing = true;
+        case 'showAlert':
+          monitoringAlerts.add(call.arguments['message']);
+          return true;
+      }
+      return null;
+    });
+    messenger.setMockMethodCallHandler(dismissalsChannel, (call) async => null);
     addTearDown(() {
       messenger.setMockMethodCallHandler(settingsChannel, null);
       messenger.setMockMethodCallHandler(companionChannel, null);
+      messenger.setMockMethodCallHandler(dismissalsChannel, null);
     });
     await tester.pumpWidget(
       DefaultAssetBundle(
@@ -215,7 +234,43 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('No connected devices'), findsOneWidget);
     expect(find.text('Batch JSON (debug)'), findsOneWidget);
+    api.snapshots.add((
+      patientId: 'p-abcdef01',
+      states: const [
+        MonitoringState(id: 's-00000001', status: MonitoringStatus.normal),
+      ],
+    ));
+    await tester.pumpAndSettle();
+    final cachePanel = find.text('Monitoring state cache (debug)');
+    await tester.scrollUntilVisible(
+      cachePanel,
+      100,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(cachePanel);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('s-00000001'), findsOneWidget);
+
+    api.snapshots.add((
+      patientId: 'p-abcdef01',
+      states: const [
+        MonitoringState(id: 's-00000001', status: MonitoringStatus.warning),
+      ],
+    ));
+    await tester.pumpAndSettle();
+    expect(companionShowing, isTrue);
+    expect(monitoringAlerts, ['s-00000001: warning']);
+    companionShowing = false;
+    await messenger.handlePlatformMessage(
+      dismissalsChannel.name,
+      const StandardMethodCodec().encodeSuccessEnvelope(null),
+      null,
+    );
+    await tester.pumpAndSettle();
+    expect(companionShowing, isTrue);
+    expect(monitoringAlerts, ['s-00000001: warning', 's-00000001: warning']);
     await tester.pumpWidget(const SizedBox.shrink());
+    unawaited(api.snapshots.close());
     unawaited(adapter.events.close());
   });
 }
@@ -224,6 +279,10 @@ class _TestTelemetryApi extends TelemetryApi {
   _TestTelemetryApi() : super(url: 'https://example.test/batches');
 
   final posts = <Map<String, Object?>>[];
+  final snapshots = StreamController<MonitoringSnapshot>.broadcast();
+
+  @override
+  Stream<MonitoringSnapshot> get monitoringStates => snapshots.stream;
 
   @override
   Future<TelemetryUploadResult> send(Map<String, Object?> payload) async {

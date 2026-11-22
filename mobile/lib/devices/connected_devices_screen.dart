@@ -4,10 +4,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../companion/companion_monitoring.dart';
 import '../companion/companion_overlay.dart';
 import '../companion/companion_wander_test.dart';
 import '../settings/patient_settings.dart';
 import '../settings/settings_screen.dart';
+import '../sync/monitoring_state.dart';
 import '../sync/telemetry_api.dart';
 import '../wearables/metric_batch_buffer.dart';
 import '../wearables/wearable_adapter.dart';
@@ -53,19 +55,34 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
   String? _batchJson;
   String? _batchUploadStatus;
   bool _debugJam = false;
+  late final _monitoring = CompanionMonitoring(widget.companion);
   late final _companionWander = CompanionWanderTest(
     companion: widget.companion,
   );
+  StreamSubscription<MonitoringSnapshot>? _monitoringStates;
+  StreamSubscription<void>? _companionDismissals;
   late final AppLifecycleListener _companionLifecycle;
 
   @override
   void initState() {
     super.initState();
-    widget.patientSettings.addListener(_assignUnassignedReadings);
-    // Moves the companion around while the app is in the background.
+    widget.patientSettings.addListener(_onPatientChanged);
+    _monitoring.setPatient(widget.patientSettings.patientId);
+    _monitoring.addListener(_onMonitoringChanged);
+    _monitoringStates = widget.telemetryApi?.monitoringStates.listen((
+      snapshot,
+    ) {
+      unawaited(_monitoring.update(snapshot));
+    });
+    if (_monitoringStates != null) {
+      _companionDismissals = widget.companion.dismissals.listen((_) {
+        unawaited(_monitoring.onDismissed());
+      });
+    }
     _companionLifecycle = AppLifecycleListener(
       onHide: _companionWander.start,
       onShow: _companionWander.stop,
+      onResume: () => unawaited(_monitoring.retry()),
     );
     final now = DateTime.now().toUtc();
     final next = _batchBuffer.windowStart(now).add(_batchBuffer.interval);
@@ -78,10 +95,13 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
     });
   }
 
-  void _assignUnassignedReadings() {
+  void _onPatientChanged() {
     final patientId = widget.patientSettings.patientId;
     if (patientId != null) _batchBuffer.assignUnassignedReadings(patientId);
+    _monitoring.setPatient(patientId);
   }
+
+  void _onMonitoringChanged() => setState(() {});
 
   Future<void> _flushBatches() async {
     await _batchBuffer.flushReady(
@@ -175,6 +195,7 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
       final allowed =
           await companion.hasPermission() ||
           await companion.requestPermission();
+      if (!mounted) return;
       if (!allowed) {
         messenger.showSnackBar(
           const SnackBar(
@@ -185,9 +206,14 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
         );
         return;
       }
-      await companion.show();
+      if (!await companion.show()) {
+        throw PlatformException(code: 'overlay_unavailable');
+      }
+      await _monitoring.retry();
+      if (!mounted) return;
       await companion.minimizeApp();
     } on PlatformException {
+      if (!mounted) return;
       messenger.showSnackBar(
         const SnackBar(content: Text('Could not show the companion.')),
       );
@@ -219,9 +245,12 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
 
   @override
   void dispose() {
-    widget.patientSettings.removeListener(_assignUnassignedReadings);
+    widget.patientSettings.removeListener(_onPatientChanged);
     _companionLifecycle.dispose();
     _companionWander.stop();
+    unawaited(_monitoringStates?.cancel());
+    unawaited(_companionDismissals?.cancel());
+    _monitoring.dispose();
     _batchTimer.cancel();
     unawaited(_connection?.cancel());
     super.dispose();
@@ -283,26 +312,11 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
                     subtitle: Text('Samples in batch: $pendingSamples'),
                   ),
                 if (batchJson != null) ...[
-                  ExpansionTile(
-                    title: const Text('Batch JSON (debug)'),
-                    subtitle: _batchUploadStatus == null
-                        ? null
-                        : Text(_batchUploadStatus!),
-                    initiallyExpanded: true,
-                    childrenPadding: const EdgeInsets.all(16),
-                    expandedAlignment: Alignment.centerLeft,
-                    children: [
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 240),
-                        child: SingleChildScrollView(
-                          primary: false,
-                          child: SelectableText(
-                            batchJson,
-                            style: const TextStyle(fontFamily: 'monospace'),
-                          ),
-                        ),
-                      ),
-                    ],
+                  _debugJsonTile(
+                    title: 'Batch JSON (debug)',
+                    json: batchJson,
+                    subtitle: _batchUploadStatus,
+                    expanded: true,
                   ),
                   CheckboxListTile(
                     title: const Text('Debug jam'),
@@ -311,6 +325,12 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
                     onChanged: (value) {
                       setState(() => _debugJam = value ?? false);
                     },
+                  ),
+                  _debugJsonTile(
+                    title: 'Monitoring state cache (debug)',
+                    json: const JsonEncoder.withIndent(
+                      '  ',
+                    ).convert(_monitoring.debugStates),
                   ),
                 ],
               ],
@@ -338,4 +358,29 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
       ),
     );
   }
+
+  Widget _debugJsonTile({
+    required String title,
+    required String json,
+    String? subtitle,
+    bool expanded = false,
+  }) => ExpansionTile(
+    title: Text(title),
+    subtitle: subtitle == null ? null : Text(subtitle),
+    initiallyExpanded: expanded,
+    childrenPadding: const EdgeInsets.all(16),
+    expandedAlignment: Alignment.centerLeft,
+    children: [
+      ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 240),
+        child: SingleChildScrollView(
+          primary: false,
+          child: SelectableText(
+            json,
+            style: const TextStyle(fontFamily: 'monospace'),
+          ),
+        ),
+      ),
+    ],
+  );
 }

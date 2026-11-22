@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,11 +8,11 @@ import 'package:ixland_mobile/companion/companion_actions.dart';
 import 'package:ixland_mobile/companion/companion_character.dart';
 import 'package:ixland_mobile/companion/companion_chat_panel.dart';
 import 'package:ixland_mobile/companion/companion_animator.dart';
+import 'package:ixland_mobile/companion/companion_monitoring.dart';
 import 'package:ixland_mobile/companion/companion_movement.dart';
 import 'package:ixland_mobile/companion/companion_overlay.dart';
 import 'package:ixland_mobile/companion/companion_overlay_app.dart';
 import 'package:ixland_mobile/companion/companion_state.dart';
-import 'package:ixland_mobile/companion/companion_wander_test.dart';
 import 'package:ixland_mobile/companion/companion_window.dart';
 import 'package:ixland_mobile/companion/styles/classic_style.dart';
 import 'package:ixland_mobile/companion/styles/companion_look.dart';
@@ -23,6 +22,7 @@ import 'package:ixland_mobile/companion/styles/dress_up/dress_up_style.dart';
 import 'package:ixland_mobile/devices/connected_devices_screen.dart';
 import 'package:ixland_mobile/settings/patient_settings.dart';
 import 'package:ixland_mobile/settings/settings_screen.dart';
+import 'package:ixland_mobile/sync/monitoring_state.dart';
 
 void main() {
   group('classifySwipe', () {
@@ -134,88 +134,123 @@ void main() {
     });
   });
 
-  group('CompanionWanderTest', () {
-    testWidgets('brings the companion back, then moves it on a timer', (
-      tester,
-    ) async {
-      final companion = _FakeCompanionOverlay(granted: true);
-      final wander = CompanionWanderTest(
-        companion: companion,
-        minDelay: const Duration(seconds: 5),
-        maxDelay: const Duration(seconds: 5),
-      )..start();
+  group('monitoring alerts', () {
+    const normal = MonitoringStatus.normal;
+    const warning = MonitoringStatus.warning;
+    const critical = MonitoringStatus.critical;
+    const patientId = 'fixture-patient';
 
-      await tester.pump(const Duration(seconds: 1));
-      expect(companion.calls, ['hasPermission', 'isShowing', 'show']);
+    MonitoringSnapshot snapshot(MonitoringStatus a, MonitoringStatus b) => (
+      patientId: patientId,
+      states: [
+        MonitoringState(id: 's-00000001', status: a),
+        MonitoringState(id: 's-00000002', status: b),
+      ],
+    );
 
-      companion.calls.clear();
-      await tester.pump(const Duration(seconds: 5));
-      expect(companion.calls, ['hasPermission', 'isShowing', 'moveTo']);
+    Map<String, Object?> cached(CompanionMonitoring monitoring, int index) =>
+        monitoring.debugStates[index];
 
-      // A dismissed companion is brought back instead of moved.
-      companion.showing = false;
-      companion.calls.clear();
-      await tester.pump(const Duration(seconds: 5));
-      expect(companion.calls, ['hasPermission', 'isShowing', 'show']);
-
-      wander.stop();
-      companion.calls.clear();
-      await tester.pump(const Duration(seconds: 10));
-      expect(companion.calls, isEmpty);
-    });
-
-    testWidgets('does nothing without overlay access', (tester) async {
+    test('raises all flags and groups addressed states in one alert', () async {
       final companion = _FakeCompanionOverlay(granted: false);
-      final wander = CompanionWanderTest(companion: companion)..start();
-      await tester.pump(const Duration(seconds: 10));
-      expect(companion.calls.toSet(), {'hasPermission'});
-      wander.stop();
+      final monitoring = CompanionMonitoring(companion)..setPatient(patientId);
+      addTearDown(monitoring.dispose);
+
+      await monitoring.update(snapshot(normal, normal));
+      expect(companion.calls, isEmpty);
+      await monitoring.update(snapshot(warning, critical));
+      expect(cached(monitoring, 0), containsPair('summon', true));
+      expect(cached(monitoring, 0), containsPair('addressed', true));
+      expect(cached(monitoring, 0), containsPair('resolved', true));
+      expect(companion.alerts, isEmpty);
+
+      companion.granted = true;
+      await monitoring.retry();
+      expect(companion.calls.where((call) => call == 'show'), hasLength(1));
+      expect(companion.alerts, ['s-00000001: warning\ns-00000002: critical']);
+      for (final state in monitoring.debugStates) {
+        expect(state, containsPair('summon', false));
+        expect(state, containsPair('addressed', false));
+        expect(state, containsPair('resolved', true));
+      }
     });
 
     test(
-      'picks delays uniformly from 4 to 8 seconds and points from 0 to 1',
-      () {
-        final wander = CompanionWanderTest(
-          companion: _FakeCompanionOverlay(granted: true),
-          random: math.Random(1),
-        );
-        final delays = List.generate(2000, (_) => wander.nextDelay());
-        expect(
-          delays.every(
-            (d) =>
-                d >= const Duration(seconds: 4) &&
-                d <= const Duration(seconds: 8),
-          ),
-          isTrue,
-        );
-        // Roughly a quarter of the samples falls in each second.
-        final firstSecond = delays
-            .where((d) => d < const Duration(seconds: 5))
-            .length;
-        expect(firstSecond, inInclusiveRange(400, 600));
+      'retains worse history and re-alerts only active states on a swipe',
+      () async {
+        final companion = _FakeCompanionOverlay(granted: true, showing: true);
+        final monitoring = CompanionMonitoring(companion)
+          ..setPatient(patientId);
+        addTearDown(monitoring.dispose);
 
-        final points = List.generate(500, (_) => wander.nextPoint());
+        await monitoring.update(snapshot(critical, warning));
+        expect(companion.calls, isNot(contains('show')));
+        await monitoring.update(snapshot(normal, normal));
+        await monitoring.update(snapshot(normal, warning));
+        expect(companion.alerts, hasLength(1));
+        expect(cached(monitoring, 0), containsPair('status', 'normal'));
         expect(
-          points.every((p) => p.dx >= 0 && p.dx <= 1 && p.dy >= 0 && p.dy <= 1),
-          isTrue,
+          cached(monitoring, 0),
+          containsPair('previous_status', 'critical'),
         );
+
+        companion.showing = false;
+        await monitoring.onDismissed();
+        expect(companion.showing, isTrue);
+        expect(companion.alerts.last, 's-00000002: warning');
+        expect(cached(monitoring, 1), containsPair('addressed', false));
+
+        await monitoring.update(snapshot(normal, normal));
+        companion.showing = false;
+        await monitoring.onDismissed();
+        expect(companion.showing, isFalse);
+        expect(companion.alerts, hasLength(2));
       },
     );
 
-    testWidgets('runs only while the app is in the background', (tester) async {
-      final companion = _FakeCompanionOverlay(granted: true, showing: true);
+    test(
+      'keeps an unshown alert pending and clears the cache on patient change',
+      () async {
+        final companion = _FakeCompanionOverlay(granted: true)
+          ..failAlert = true;
+        final monitoring = CompanionMonitoring(companion)
+          ..setPatient(patientId);
+        addTearDown(monitoring.dispose);
+
+        await monitoring.update(snapshot(warning, normal));
+        expect(cached(monitoring, 0), containsPair('summon', false));
+        expect(cached(monitoring, 0), containsPair('addressed', true));
+        companion.failAlert = false;
+        await monitoring.retry();
+        expect(companion.alerts, ['s-00000001: warning']);
+
+        monitoring.setPatient('other-patient');
+        await monitoring.update(snapshot(critical, critical));
+        expect(monitoring.debugStates, isEmpty);
+        expect(companion.alerts, hasLength(1));
+      },
+    );
+
+    testWidgets('backgrounding does not summon on a timer', (tester) async {
+      final companion = _FakeCompanionOverlay(granted: true);
       await tester.pumpWidget(_devicesScreen(companion));
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
       await tester.pump(const Duration(seconds: 10));
+      expect(companion.calls, contains('isShowing'));
+      expect(companion.calls, isNot(contains('show')));
+      expect(companion.calls, isNot(contains('moveTo')));
+
+      companion.calls.clear();
+      companion.showing = true;
+      await tester.pump(const Duration(seconds: 10));
       expect(companion.calls, contains('moveTo'));
+      expect(companion.calls, isNot(contains('show')));
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      companion.calls.clear();
-      await tester.pump(const Duration(seconds: 20));
-      expect(companion.calls, isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
     });
   });
 
@@ -870,10 +905,11 @@ Widget _devicesScreen(CompanionOverlay companion) => MaterialApp(
 class _FakeCompanionOverlay implements CompanionOverlay {
   _FakeCompanionOverlay({required this.granted, this.showing = false});
 
-  final bool granted;
+  bool granted;
   bool showing;
+  bool failAlert = false;
   final calls = <String>[];
-  final moves = <Offset>[];
+  final alerts = <String>[];
 
   @override
   Future<bool> hasPermission() async {
@@ -888,9 +924,22 @@ class _FakeCompanionOverlay implements CompanionOverlay {
   }
 
   @override
-  Future<void> show() async {
+  Future<bool> show() async {
     calls.add('show');
-    showing = true;
+    return showing = true;
+  }
+
+  @override
+  Stream<void> get dismissals => const Stream.empty();
+
+  @override
+  Future<bool> showAlert({
+    required String title,
+    required String message,
+  }) async {
+    if (failAlert) return false;
+    alerts.add(message);
+    return true;
   }
 
   @override
@@ -908,7 +957,6 @@ class _FakeCompanionOverlay implements CompanionOverlay {
   @override
   Future<bool> moveTo(Offset uv) async {
     calls.add('moveTo');
-    moves.add(uv);
     return true;
   }
 

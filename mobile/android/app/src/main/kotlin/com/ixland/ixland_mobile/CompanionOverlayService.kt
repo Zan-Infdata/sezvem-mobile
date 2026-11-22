@@ -1,5 +1,6 @@
 package com.ixland.ixland_mobile
 
+import android.app.Activity
 import android.app.AlertDialog
 import android.app.Notification
 import android.app.NotificationChannel
@@ -19,6 +20,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.ResultReceiver
 import android.provider.Settings
 import android.view.ContextThemeWrapper
 import android.view.Gravity
@@ -79,7 +81,11 @@ class CompanionOverlayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP || !show()) stopSelf()
+        val shown = intent?.action != ACTION_STOP && show()
+        @Suppress("DEPRECATION")
+        val result = intent?.getParcelableExtra<ResultReceiver>(EXTRA_SHOW_RESULT)
+        result?.send(if (shown) Activity.RESULT_OK else Activity.RESULT_CANCELED, null)
+        if (!shown) stopSelf()
         return START_NOT_STICKY
     }
 
@@ -194,7 +200,12 @@ class CompanionOverlayService : Service() {
             "close" -> {
                 result.success(null)
                 // Destroy the engine after this call returns, not while it's handling the call.
-                mainHandler.post(::hide)
+                mainHandler.post {
+                    if (isShowing) {
+                        hide()
+                        onWindowDismissed?.invoke()
+                    }
+                }
             }
             else -> result.notImplemented()
         }
@@ -250,7 +261,8 @@ class CompanionOverlayService : Service() {
         }
     }
 
-    private fun showAlert(title: String, message: String) {
+    fun showAlert(title: String, message: String): Boolean {
+        if (!isShowing || !Settings.canDrawOverlays(this)) return false
         dialog?.dismiss()
         val themed = ContextThemeWrapper(this, android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
         dialog = AlertDialog.Builder(themed)
@@ -263,6 +275,7 @@ class CompanionOverlayService : Service() {
                 it.setOnDismissListener { _ -> if (dialog === it) dialog = null }
                 it.show()
             }
+        return true
     }
 
     /** Plays a generated balloon sound: rushing air under a rising tone. */
@@ -471,6 +484,8 @@ class CompanionOverlayService : Service() {
     companion object {
         const val WINDOW_CHANNEL = "ixland/companion/window"
         const val ACTION_STOP = "com.ixland.ixland_mobile.companion.STOP"
+        const val EXTRA_SHOW_RESULT = "com.ixland.ixland_mobile.companion.SHOW_RESULT"
+        var onWindowDismissed: (() -> Unit)? = null
         private const val NOTIFICATION_CHANNEL = "companion"
         private const val NOTIFICATION_ID = 7
 

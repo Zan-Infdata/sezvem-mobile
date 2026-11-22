@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ixland_mobile/sync/monitoring_state.dart';
 import 'package:ixland_mobile/sync/telemetry_api.dart';
 
 void main() {
@@ -109,6 +110,7 @@ void main() {
       url: 'http://127.0.0.1:${server.port}/custom/api/batches/',
     );
     const deadline = Duration(seconds: 5);
+    final snapshot = api.monitoringStates.first;
 
     final upload = api.send({
       'patient_id': 'fixture-patient',
@@ -117,7 +119,7 @@ void main() {
     final batch = await batchRequest.future.timeout(deadline);
     final states = await statesRequest.future.timeout(deadline);
     expect(batch.uri.path, '/custom/api/batches/');
-    expect(states.uri.path, '/custom/api/states');
+    expect(states.uri.path, '/custom/api/patients/fixture-patient/states');
     expect(states.uri.hasQuery, isFalse);
     expect(states.headers.value(HttpHeaders.acceptHeader), 'application/json');
 
@@ -125,8 +127,44 @@ void main() {
     await batch.response.close();
     expect((await upload.timeout(deadline)).accepted, isTrue);
 
-    states.response.statusCode = HttpStatus.serviceUnavailable;
+    states.response.headers.contentType = ContentType.json;
+    states.response.write(
+      jsonEncode([
+        {
+          'patient_id': 'fixture-patient',
+          'state_id': 's-00000001',
+          'output': {'stage': 'unbalanced'},
+        },
+        {
+          'patient_id': 'fixture-patient',
+          'state_id': 's-00000002',
+          'output': {'status': 'critical'},
+        },
+        {
+          'patient_id': 'fixture-patient',
+          'state_id': 's-00000003',
+          'output': {},
+        },
+        {
+          'patient_id': 'other-patient',
+          'state_id': 's-00000004',
+          'output': {'status': 'warning'},
+        },
+      ]),
+    );
     await states.response.close();
+    final fetched = await snapshot.timeout(deadline);
+    expect(fetched.patientId, 'fixture-patient');
+    expect(fetched.states.map((state) => state.id), [
+      's-00000001',
+      's-00000002',
+      's-00000003',
+    ]);
+    expect(fetched.states.map((state) => state.status), [
+      MonitoringStatus.unbalanced,
+      MonitoringStatus.critical,
+      null,
+    ]);
   });
 
   test('requires explicit patient and endpoint configuration', () async {

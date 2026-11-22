@@ -14,13 +14,18 @@ abstract interface class CompanionOverlay {
   Future<bool> requestPermission();
 
   /// Shows the companion. Starts the companion service if it isn't running.
-  Future<void> show();
+  Future<bool> show();
 
   /// Removes the companion and stops the companion service.
   Future<void> hide();
 
   /// Whether the companion is on screen.
   Future<bool> isShowing();
+
+  Stream<void> get dismissals;
+
+  /// Shows an alert when the companion window is available.
+  Future<bool> showAlert({required String title, required String message});
 
   /// Asks the companion to walk to [uv], where (0, 0) is the top left and
   /// (1, 1) the bottom right of the padded screen area. Completes with false if
@@ -41,6 +46,10 @@ class AndroidCompanionOverlay implements CompanionOverlay {
   const AndroidCompanionOverlay();
 
   static const _channel = MethodChannel('ixland/companion');
+  static const _dismissed = EventChannel('ixland/companion/dismissed');
+  static final _dismissals = _dismissed.receiveBroadcastStream().map<void>(
+    (_) {},
+  );
 
   @override
   Future<bool> hasPermission() async =>
@@ -51,7 +60,11 @@ class AndroidCompanionOverlay implements CompanionOverlay {
       await _channel.invokeMethod<bool>('requestPermission') ?? false;
 
   @override
-  Future<void> show() => _channel.invokeMethod<void>('show');
+  Future<bool> show() async =>
+      await _channel
+          .invokeMethod<bool>('show')
+          .timeout(const Duration(seconds: 5), onTimeout: () => false) ??
+      false;
 
   @override
   Future<void> hide() => _channel.invokeMethod<void>('hide');
@@ -59,6 +72,20 @@ class AndroidCompanionOverlay implements CompanionOverlay {
   @override
   Future<bool> isShowing() async =>
       await _channel.invokeMethod<bool>('isShowing') ?? false;
+
+  @override
+  Stream<void> get dismissals => _dismissals;
+
+  @override
+  Future<bool> showAlert({
+    required String title,
+    required String message,
+  }) async =>
+      await _channel.invokeMethod<bool>('showAlert', {
+        'title': title,
+        'message': message,
+      }) ??
+      false;
 
   @override
   Future<bool> moveTo(Offset uv) async =>
