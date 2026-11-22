@@ -14,8 +14,10 @@ import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
+import com.google.ai.edge.litertlm.tool
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Runs Gemma on the phone through LiteRT-LM. There is one engine per app process, so the overlay
@@ -43,13 +45,19 @@ internal object AssistantEngine {
     private var engine: Engine? = null
     private var conversation: Conversation? = null
     private var instruction = FALLBACK_INSTRUCTION
+    private var checkInPreview: ((HeartRateCheckInReport) -> Unit)? = null
 
     // Read on any thread, written on the worker or main thread.
     @Volatile private var state = "unloaded"
     @Volatile private var detail: String? = null
     @Volatile private var backendName = "cpu"
     @Volatile private var loadMs: Long? = null
-    @Volatile private var replying = false
+    @Volatile private var conversationGeneration = 0
+    private val activeReply = AtomicReference<Reply?>(null)
+
+    private class Reply {
+        @Volatile var cancelled = false
+    }
 
     /**
      * The model's expected location. Creates the app-owned `models` folder so a file copied there
@@ -82,52 +90,59 @@ internal object AssistantEngine {
         context: Context,
         backend: String,
         systemInstruction: String?,
+        preview: ((HeartRateCheckInReport) -> Unit)?,
         done: (Map<String, Any?>) -> Unit,
     ) {
         val app = context.applicationContext
         worker.execute {
             val wanted = systemInstruction?.takeIf { it.isNotBlank() } ?: FALLBACK_INSTRUCTION
-            val source = if (wanted == FALLBACK_INSTRUCTION) "fallback" else "soul.md"
-            Log.i(TAG, "System instruction from $source, ${wanted.length} characters")
-            if (wanted != instruction) {
-                instruction = wanted
-                val loaded = engine
-                if (loaded != null && !replying) {
-                    conversation?.close()
-                    conversation = loaded.createConversation(conversationConfig())
-                }
+            val source = when {
+                preview != null -> "soul.md and monitoring state prompts"
+                wanted == FALLBACK_INSTRUCTION -> "fallback"
+                else -> "soul.md"
             }
-            if (engine == null) {
-                val file = modelFile(app)
-                if (!file.exists()) {
-                    state = "missing"
+            Log.i(TAG, "System instruction from $source, ${wanted.length} characters")
+            val replaceConversation = wanted != instruction || preview != null || checkInPreview != null
+            instruction = wanted
+            checkInPreview = preview
+            try {
+                val loaded = engine
+                if (loaded != null) {
+                    if (replaceConversation) restartConversation(loaded)
+                    state = "ready"
                     detail = null
                 } else {
+                    val file = modelFile(app)
+                    if (!file.exists()) {
+                        state = "missing"
+                        detail = null
+                        val result = status(app)
+                        main.post { done(result) }
+                        return@execute
+                    }
                     state = "loading"
                     detail = null
                     backendName = if (backend == "gpu") "gpu" else "cpu"
                     val started = SystemClock.elapsedRealtime()
-                    try {
-                        val created = Engine(
-                            EngineConfig(
-                                modelPath = file.absolutePath,
-                                backend = if (backendName == "gpu") Backend.GPU() else Backend.CPU(),
-                                cacheDir = app.cacheDir.absolutePath,
-                            ),
-                        )
-                        created.initialize()
-                        engine = created
-                        conversation = created.createConversation(conversationConfig())
-                        loadMs = SystemClock.elapsedRealtime() - started
-                        state = "ready"
-                        Log.i(TAG, "Loaded on $backendName in $loadMs ms")
-                    } catch (error: Throwable) {
-                        closeQuietly()
-                        state = "error"
-                        detail = error.message ?: error.javaClass.simpleName
-                        Log.w(TAG, "Load failed on $backendName", error)
-                    }
+                    val created = Engine(
+                        EngineConfig(
+                            modelPath = file.absolutePath,
+                            backend = if (backendName == "gpu") Backend.GPU() else Backend.CPU(),
+                            cacheDir = app.cacheDir.absolutePath,
+                        ),
+                    )
+                    engine = created
+                    created.initialize()
+                    conversation = created.createConversation(conversationConfig())
+                    loadMs = SystemClock.elapsedRealtime() - started
+                    state = "ready"
+                    Log.i(TAG, "Loaded on $backendName in $loadMs ms")
                 }
+            } catch (error: Throwable) {
+                closeQuietly()
+                state = "error"
+                detail = error.javaClass.simpleName
+                Log.w(TAG, "Load failed on $backendName ($detail)")
             }
             val result = status(app)
             main.post { done(result) }
@@ -145,13 +160,15 @@ internal object AssistantEngine {
         onError: (String) -> Unit,
     ): String? {
         if (state != "ready") return "The model isn't loaded."
-        if (replying) return "A reply is already in progress."
-        replying = true
+        val reply = Reply()
+        if (!activeReply.compareAndSet(null, reply)) return "A reply is already in progress."
         worker.execute {
+            if (activeReply.get() !== reply) return@execute
             val active = conversation
             if (active == null) {
-                replying = false
-                main.post { onError("The model isn't loaded.") }
+                if (activeReply.compareAndSet(reply, null)) {
+                    main.post { onError("The model isn't loaded.") }
+                }
                 return@execute
             }
             val started = SystemClock.elapsedRealtime()
@@ -164,27 +181,27 @@ internal object AssistantEngine {
                             val chunk = textOf(message)
                             if (chunk.isEmpty()) return
                             chunks++
-                            main.post { onChunk(chunk) }
+                            main.post { if (!reply.cancelled) onChunk(chunk) }
                         }
 
                         override fun onDone() {
-                            replying = false
+                            if (!activeReply.compareAndSet(reply, null)) return
                             Log.i(TAG, "Reply of $chunks chunks in ${SystemClock.elapsedRealtime() - started} ms")
                             main.post(onDone)
                         }
 
                         override fun onError(throwable: Throwable) {
-                            replying = false
-                            Log.w(TAG, "Reply failed after $chunks chunks", throwable)
-                            val message = throwable.message ?: throwable.javaClass.simpleName
-                            main.post { onError(message) }
+                            if (!activeReply.compareAndSet(reply, null)) return
+                            Log.w(TAG, "Reply failed after $chunks chunks (${throwable.javaClass.simpleName})")
+                            main.post { onError("The model could not complete the reply.") }
                         }
                     },
                 )
             } catch (error: Throwable) {
-                replying = false
-                Log.w(TAG, "Reply failed to start", error)
-                main.post { onError(error.message ?: error.javaClass.simpleName) }
+                if (activeReply.compareAndSet(reply, null)) {
+                    Log.w(TAG, "Reply failed to start (${error.javaClass.simpleName})")
+                    main.post { onError("The model could not start the reply.") }
+                }
             }
         }
         return null
@@ -193,40 +210,73 @@ internal object AssistantEngine {
     /** Stops the streaming reply, if any. */
     fun cancel() {
         worker.execute {
-            if (replying) conversation?.cancelProcess()
+            cancelReply()
         }
     }
 
     /** Forgets the conversation so the next message starts fresh. The model stays loaded. */
-    fun reset() {
+    fun reset(done: (Boolean) -> Unit) {
         worker.execute {
-            val loaded = engine ?: return@execute
-            if (replying) conversation?.cancelProcess()
-            conversation?.close()
-            conversation = loaded.createConversation(conversationConfig())
-            replying = false
+            val reset = runCatching { engine?.let(::restartConversation) }.isSuccess
+            if (!reset) {
+                closeQuietly()
+                state = "error"
+                detail = "The conversation could not be reset."
+            }
+            main.post { done(reset) }
         }
     }
 
     /** Releases the model and its memory. */
     fun unload() {
         worker.execute {
-            if (replying) conversation?.cancelProcess()
             closeQuietly()
             state = "unloaded"
             detail = null
             loadMs = null
-            replying = false
+            checkInPreview = null
         }
     }
 
-    private fun conversationConfig() =
-        ConversationConfig(systemInstruction = Contents.of(instruction))
+    private fun cancelReply() {
+        val reply = activeReply.getAndSet(null) ?: return
+        reply.cancelled = true
+        conversation?.cancelProcess()
+    }
+
+    private fun restartConversation(loaded: Engine) {
+        conversationGeneration++
+        cancelReply()
+        conversation?.close()
+        conversation = loaded.createConversation(conversationConfig())
+    }
+
+    private fun conversationConfig(): ConversationConfig {
+        val generation = conversationGeneration
+        val tools = checkInPreview?.let { preview ->
+            listOf(tool(HeartRateCheckInTool { report ->
+                val reply = activeReply.get()
+                if (reply == null || generation != conversationGeneration) {
+                    false
+                } else {
+                    main.post {
+                        if (!reply.cancelled && generation == conversationGeneration) preview(report)
+                    }
+                }
+            }))
+        }.orEmpty()
+        return ConversationConfig(systemInstruction = Contents.of(instruction), tools = tools)
+    }
 
     private fun textOf(message: Message): String =
         message.contents.contents.filterIsInstance<Content.Text>().joinToString("") { it.text }
 
     private fun closeQuietly() {
+        conversationGeneration++
+        try {
+            cancelReply()
+        } catch (_: Throwable) {
+        }
         try {
             conversation?.close()
         } catch (_: Throwable) {

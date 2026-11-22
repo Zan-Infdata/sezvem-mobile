@@ -65,6 +65,9 @@ class CompanionOverlayService : Service() {
     private var params: WindowManager.LayoutParams? = null
     private var channel: MethodChannel? = null
     private var dialog: AlertDialog? = null
+    private var readyForCheckIns = false
+    private var pendingCheckIn: String? = null
+    private var checkInActive = false
     private var sound: AudioTrack? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -126,7 +129,11 @@ class CompanionOverlayService : Service() {
 
         this.engine = engine
         this.channel = channel
-        this.assistant = AssistantBridge(this, engine.dartExecutor.binaryMessenger)
+        this.assistant = AssistantBridge(this, engine.dartExecutor.binaryMessenger) { _ ->
+            if (checkInActive) {
+                showAlert("Check-in preview", "The assistant prepared your check-in report on this phone.")
+            }
+        }
         this.view = view
         this.root = root
         this.params = params
@@ -137,6 +144,12 @@ class CompanionOverlayService : Service() {
         when (call.method) {
             "getLayout" -> result.success(layout())
             "getLook" -> result.success(CompanionPrefs.look(this))
+            "readyForCheckIns" -> {
+                readyForCheckIns = true
+                pendingCheckIn?.let { channel?.invokeMethod("startCheckIn", mapOf("prompt" to it)) }
+                pendingCheckIn = null
+                result.success(null)
+            }
             "moveTo" -> {
                 val params = params
                 val root = root
@@ -278,6 +291,26 @@ class CompanionOverlayService : Service() {
         return true
     }
 
+    fun startCheckIn(prompt: String): Boolean {
+        val channel = channel ?: return false
+        if (!isShowing || !Settings.canDrawOverlays(this)) return false
+        dialog?.dismiss()
+        checkInActive = true
+        if (readyForCheckIns) {
+            channel.invokeMethod("startCheckIn", mapOf("prompt" to prompt))
+        } else {
+            pendingCheckIn = prompt
+        }
+        return true
+    }
+
+    fun clearCheckIn() {
+        checkInActive = false
+        pendingCheckIn = null
+        dialog?.dismiss()
+        if (readyForCheckIns) channel?.invokeMethod("clearCheckIn", null)
+    }
+
     /** Plays a generated balloon sound: rushing air under a rising tone. */
     private fun playInflateSound(durationMs: Int) {
         stopSound()
@@ -384,6 +417,9 @@ class CompanionOverlayService : Service() {
         stopSound()
         dialog?.dismiss()
         dialog = null
+        readyForCheckIns = false
+        pendingCheckIn = null
+        checkInActive = false
         channel?.setMethodCallHandler(null)
         channel = null
         assistant?.close()

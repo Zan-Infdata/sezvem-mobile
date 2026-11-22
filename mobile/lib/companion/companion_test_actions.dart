@@ -37,13 +37,17 @@ const chatMoveSpeedFactor = 8.0;
 
 /// Hurries to the top-right corner, opens the chat with the on-device
 /// assistant there, and hurries back after the chat closes.
-Future<void> chat(CompanionActionContext context) async {
+Future<void> chat(
+  CompanionActionContext context, {
+  Future<void> Function()? open,
+}) async {
   final movement = context.movement;
   final home = Offset(movement.x, movement.y);
   await _hurryTo(context, movement.chatHeadPoint);
+  if (context.isClosed) return;
   context.animator.state = CompanionState.idle;
-  await context.openChat();
-  await _hurryTo(context, home);
+  await (open ?? context.openChat)();
+  if (!context.isClosed) await _hurryTo(context, home);
 }
 
 Future<void> _hurryTo(CompanionActionContext context, Offset target) async {

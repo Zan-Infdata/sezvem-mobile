@@ -12,11 +12,16 @@ import io.flutter.plugin.common.MethodChannel
  * carries an `id` chosen by Dart, and reply events on [EVENT_CHANNEL] carry the same `id` with a
  * `type` of `chunk`, `done`, or `error`.
  */
-internal class AssistantBridge(context: Context, messenger: BinaryMessenger) {
+internal class AssistantBridge(
+    context: Context,
+    messenger: BinaryMessenger,
+    private val previewCheckIn: (HeartRateCheckInReport) -> Unit,
+) {
     private val context = context.applicationContext
     private val methods = MethodChannel(messenger, METHOD_CHANNEL)
     private val events = EventChannel(messenger, EVENT_CHANNEL)
     private var sink: EventChannel.EventSink? = null
+    private var closed = false
 
     init {
         events.setStreamHandler(
@@ -37,6 +42,11 @@ internal class AssistantBridge(context: Context, messenger: BinaryMessenger) {
                     context,
                     call.argument<String>("backend") ?: "cpu",
                     call.argument<String>("systemInstruction"),
+                    preview = if (call.argument<Boolean>("checkIn") == true) {
+                        { report -> if (!closed) previewCheckIn(report) }
+                    } else {
+                        null
+                    },
                 ) { result.success(it) }
                 "send" -> {
                     val id = call.argument<Number>("id")?.toInt()
@@ -58,8 +68,10 @@ internal class AssistantBridge(context: Context, messenger: BinaryMessenger) {
                     result.success(null)
                 }
                 "reset" -> {
-                    AssistantEngine.reset()
-                    result.success(null)
+                    AssistantEngine.reset { reset ->
+                        if (reset) result.success(null)
+                        else result.error("reset_failed", "The conversation could not be reset.", null)
+                    }
                 }
                 else -> result.notImplemented()
             }
@@ -71,6 +83,7 @@ internal class AssistantBridge(context: Context, messenger: BinaryMessenger) {
     }
 
     fun close() {
+        closed = true
         methods.setMethodCallHandler(null)
         events.setStreamHandler(null)
         sink = null

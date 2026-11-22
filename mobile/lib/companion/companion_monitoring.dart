@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -11,6 +13,7 @@ final class CompanionMonitoring extends ChangeNotifier {
   final CompanionOverlay _companion;
   final _states = <String, _CachedState>{};
   String? _patientId;
+  String _checkInPrompt = '';
   int _generation = 0;
   bool _disposed = false;
   Future<void> _pending = Future.value();
@@ -24,6 +27,10 @@ final class CompanionMonitoring extends ChangeNotifier {
     if (patientId == _patientId) return;
     _generation++;
     _patientId = patientId;
+    _checkInPrompt = '';
+    if (_generation > 1) {
+      unawaited(_enqueue((_) => _companion.clearCheckIn()));
+    }
     if (_states.isEmpty) return;
     _states.clear();
     notifyListeners();
@@ -33,6 +40,10 @@ final class CompanionMonitoring extends ChangeNotifier {
     generation,
   ) async {
     if (snapshot.patientId != _patientId) return;
+    _checkInPrompt = snapshot.states
+        .map((state) => state.prompt)
+        .nonNulls
+        .join('\n\n');
     for (final observation in snapshot.states) {
       _states.putIfAbsent(observation.id, _CachedState.new).update(observation);
     }
@@ -41,11 +52,9 @@ final class CompanionMonitoring extends ChangeNotifier {
   });
 
   Future<void> onDismissed() => _enqueue((generation) async {
-    final abnormal = _states.values
-        .where((state) => (state.status?.severity ?? 0) > 0)
-        .toList();
-    if (abnormal.isEmpty) return;
-    for (final state in abnormal) {
+    final resolved = _states.values.where((state) => state.resolved).toList();
+    if (resolved.isEmpty) return;
+    for (final state in resolved) {
       state.addressed = true;
     }
     notifyListeners();
@@ -71,7 +80,14 @@ final class CompanionMonitoring extends ChangeNotifier {
   bool _isCurrent(int generation) => !_disposed && generation == _generation;
 
   Future<void> _surfaceAlerts(int generation) async {
-    if (!_states.values.any((state) => state.summon || state.addressed)) return;
+    final emergency = _states.values.any((state) => state.inEmergency);
+    final addressed = _states.entries
+        .where(
+          (entry) =>
+              entry.value.addressed && (!emergency || entry.value.inEmergency),
+        )
+        .toList();
+    if (addressed.isEmpty) return;
     final showing = await _companion.isShowing();
     if (!_isCurrent(generation)) return;
     if (!showing) {
@@ -85,17 +101,27 @@ final class CompanionMonitoring extends ChangeNotifier {
       state.summon = false;
     }
     notifyListeners();
-    final addressed = _states.entries
-        .where((entry) => entry.value.addressed)
-        .toList();
-    if (addressed.isEmpty) return;
-    final shown = await _companion.showAlert(
-      title: 'Monitoring states',
-      message: addressed
-          .map((entry) => '${entry.key}: ${entry.value.description}')
-          .join('\n'),
-    );
-    if (!_isCurrent(generation) || !shown) return;
+    final bool accepted;
+    if (emergency) {
+      await _companion.clearCheckIn();
+      if (!_isCurrent(generation)) return;
+      accepted = await _companion.showAlert(
+        title: 'Emergency monitoring alert',
+        message:
+            'Contact your medical team immediately. '
+            'Your monitoring results indicate a risk of complications.',
+      );
+    } else if (_checkInPrompt.isNotEmpty) {
+      accepted = await _companion.startCheckIn(_checkInPrompt);
+    } else {
+      accepted = await _companion.showAlert(
+        title: 'Monitoring states',
+        message: addressed
+            .map((entry) => '${entry.key}: ${entry.value.description}')
+            .join('\n'),
+      );
+    }
+    if (!_isCurrent(generation) || !accepted) return;
     for (final entry in addressed) {
       entry.value.addressed = false;
     }
@@ -117,6 +143,8 @@ final class _CachedState {
   bool addressed = false;
   bool resolved = false;
 
+  bool get inEmergency => status == MonitoringStatus.emergency;
+
   void update(MonitoringState observation) {
     final lastUpdate = updatedAt;
     final nextUpdate = observation.updatedAt;
@@ -133,7 +161,9 @@ final class _CachedState {
       previousStatus = status;
     }
     status = next;
-    if (!resolved && (next?.severity ?? 0) > severity) {
+    if (inEmergency ||
+        (observation.prompt != null && next == MonitoringStatus.critical) ||
+        (!resolved && (next?.severity ?? 0) > severity)) {
       summon = true;
       addressed = true;
       resolved = true;

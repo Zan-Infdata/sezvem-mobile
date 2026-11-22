@@ -133,21 +133,32 @@ void main() {
         {
           'patient_id': 'fixture-patient',
           'state_id': 's-00000001',
+          'prompt': 'First fixture prompt.',
+          'prompt_source': 'doctor',
           'output': {'stage': 'unbalanced'},
         },
         {
           'patient_id': 'fixture-patient',
           'state_id': 's-00000002',
+          'prompt': '  Second fixture prompt.  ',
+          'prompt_source': 'generated',
           'output': {'status': 'critical'},
         },
         {
           'patient_id': 'fixture-patient',
           'state_id': 's-00000003',
+          'prompt': '   ',
           'output': {},
         },
         {
-          'patient_id': 'other-patient',
+          'patient_id': 'fixture-patient',
           'state_id': 's-00000004',
+          'output': {'status': 'emergency'},
+        },
+        {
+          'patient_id': 'other-patient',
+          'state_id': 's-00000005',
+          'prompt': 'Other patient prompt.',
           'output': {'status': 'warning'},
         },
       ]),
@@ -159,10 +170,18 @@ void main() {
       's-00000001',
       's-00000002',
       's-00000003',
+      's-00000004',
     ]);
     expect(fetched.states.map((state) => state.status), [
       MonitoringStatus.unbalanced,
       MonitoringStatus.critical,
+      null,
+      MonitoringStatus.emergency,
+    ]);
+    expect(fetched.states.map((state) => state.prompt), [
+      'First fixture prompt.',
+      'Second fixture prompt.',
+      null,
       null,
     ]);
   });

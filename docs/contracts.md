@@ -12,7 +12,9 @@ Configure the full POST endpoint with `BATCH_API_URL` and set the patient ID in 
 
 **Create patient** posts a name to `POST /patients` and uses the server-assigned `patient_id` from the HTTP 201 response for new readings. See [patient creation setup](mobile-implementation.md#create-a-patient-through-the-api).
 
-Each batch POST also starts a concurrent `GET /patients/{patient_id}/states` on the same API base URL, using the batch's patient ID. The HTTP 200 response is an array of that patient's monitoring states, sorted by `state_id`. The phone uses the configured patient's `output.status` or HRV `output.stage` to update its local cache. The POST response alone determines batch acceptance. [Deployed OpenAPI schema](https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/openapi.json)
+Each batch POST also starts a concurrent `GET /patients/{patient_id}/states` on the same API base URL, using the batch's patient ID. The HTTP 200 response is an array of that patient's monitoring states, sorted by `state_id`. The phone uses the configured patient's `output.status` or HRV `output.stage` to update its local cache. The top-level `prompt` field supplies the assistant instructions, whether `prompt_source` is `doctor` or `generated`. The POST response alone determines batch acceptance. [Deployed OpenAPI schema](https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/openapi.json)
+
+The mobile emergency alert expects an explicit `output.status` of `emergency`. The deployed declarative model documents `critical` as its highest status. [Deployed OpenAPI schema](https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/openapi.json)
 
 Every mobile batch includes `sample_timestamps` as a top-level array of UTC ISO 8601 strings. Entry `i` is the phone's receipt time for `hr[i]`. A batch with no heart-rate entries uses an empty array. See [sample timestamp verification](mobile-implementation.md#heart-rate-sample-timestamps).
 

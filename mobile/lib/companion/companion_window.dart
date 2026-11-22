@@ -60,6 +60,10 @@ class CompanionWindow {
     await _channel.invokeMapMethod<Object?, Object?>('getLook'),
   );
 
+  /// Lets Android deliver a check-in queued while the overlay was starting.
+  Future<void> readyForCheckIns() =>
+      _channel.invokeMethod<void>('readyForCheckIns');
+
   /// Handles calls from the service. [onLayoutChanged] receives the clamped
   /// layout after rotation or a display change. [onMoveTo] receives a point in
   /// 0 to 1 screen coordinates from the main app and returns whether the
@@ -70,6 +74,8 @@ class CompanionWindow {
     required bool Function(Offset uv) onMoveTo,
     required void Function(CompanionLook look) onLookChanged,
     void Function()? onBack,
+    void Function(String prompt)? onCheckIn,
+    void Function()? onClearCheckIn,
   }) {
     _channel.setMethodCallHandler((call) async {
       final args = call.arguments is Map ? call.arguments as Map : const {};
@@ -87,6 +93,14 @@ class CompanionWindow {
           return null;
         case 'backPressed':
           onBack?.call();
+          return null;
+        case 'startCheckIn':
+          if (args['prompt'] case final String prompt when prompt.isNotEmpty) {
+            onCheckIn?.call(prompt);
+          }
+          return null;
+        case 'clearCheckIn':
+          onClearCheckIn?.call();
           return null;
       }
       throw MissingPluginException(call.method);

@@ -73,10 +73,12 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
   late CompanionStyle _style = widget.styles.first;
   Offset _drag = Offset.zero;
 
-  /// Kept for the life of the overlay, so reopening the chat shows earlier
-  /// messages. Nothing is saved.
+  /// The conversation persists when the panel is closed.
   AssistantChat? _chat;
+  AssistantChat? _visibleChat;
+  late final _assistant = widget.assistant ?? NativeAssistantEngine();
   Completer<void>? _chatClosed;
+  String? _pendingCheckIn;
 
   /// Where the character is in the expanded window, in logical pixels. The
   /// head stays exactly there while the chat is open. Null while the chat is
@@ -131,6 +133,7 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
       movement: movement,
       window: _window,
       openChat: _openChat,
+      onIdle: _startPendingCheckIn,
     );
     _window.listen(
       onLayoutChanged: movement.updateLayout,
@@ -141,8 +144,44 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
         setState(() => _style = look.resolve(widget.styles));
       },
       onBack: _closeChat,
+      onCheckIn: (prompt) {
+        if (_chatClosed != null && _visibleChat?.checkInPrompt == prompt) {
+          return;
+        }
+        _pendingCheckIn = prompt;
+        _closeChat();
+        _startPendingCheckIn();
+      },
+      onClearCheckIn: () {
+        _pendingCheckIn = null;
+        if (_chat?.checkInPrompt == null) return;
+        _discardChat();
+        if (_panelBuilt && mounted) setState(() => _panelBuilt = false);
+        _closeChat();
+      },
     );
     actions.run(enterFromRight);
+    await _window.readyForCheckIns();
+  }
+
+  void _startPendingCheckIn() {
+    if (_pendingCheckIn == null) return;
+    _actions?.run(
+      (context) => chat(
+        context,
+        open: () async {
+          if (_pendingCheckIn != null) await _openChat();
+        },
+      ),
+    );
+  }
+
+  void _discardChat() {
+    final chat = _chat;
+    _chat = null;
+    if (chat == null) return;
+    if (chat.isReplying) unawaited(_assistant.cancel());
+    chat.dispose();
   }
 
   /// Expands the window around the character, which becomes the chat head,
@@ -151,15 +190,19 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
   Future<void> _openChat() async {
     final movement = _movement;
     if (movement == null || !mounted) return;
+    final prompt = _pendingCheckIn;
+    _pendingCheckIn = null;
+    if (prompt != null && _chat?.checkInPrompt != prompt) {
+      _discardChat();
+      _chat = AssistantChat(_assistant, checkInPrompt: prompt);
+    }
+    final chat = _visibleChat = _chat ??= AssistantChat(_assistant);
+    final closed = _chatClosed = Completer<void>();
     final from = await _window.getLayout();
     await _hideWhile(_window.expand);
     final expanded = await _window.getLayout();
     if (!mounted) return;
     final density = expanded.density;
-    final chat = _chat ??= AssistantChat(
-      widget.assistant ?? NativeAssistantEngine(),
-    );
-    final closed = _chatClosed = Completer<void>();
     setState(() {
       _chatHead = Rect.fromLTWH(
         (from.x - expanded.x) / density,
@@ -175,13 +218,19 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
     // panel, then fade it in.
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
-    setState(() => _panelBuilt = true);
-    await WidgetsBinding.instance.endOfFrame;
-    if (!mounted) return;
-    setState(() => _chatShown = true);
-    // Load the model after the panel has faded in. Loading keeps the CPU
-    // busy and would otherwise delay the frames that show the chat.
-    unawaited(Future<void>.delayed(_chatFade * 2, chat.prepare));
+    if (!closed.isCompleted) {
+      setState(() => _panelBuilt = true);
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      if (!closed.isCompleted) setState(() => _chatShown = true);
+      // Load the model after the panel has faded in. Loading keeps the CPU
+      // busy and would otherwise delay the frames that show the chat.
+      unawaited(
+        Future<void>.delayed(_chatFade * 2, () async {
+          if (!closed.isCompleted) await chat.prepare();
+        }),
+      );
+    }
     await closed.future;
     if (!mounted) return;
     setState(() => _chatShown = false);
@@ -191,6 +240,7 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
     await _hideWhile(() async => collapsed = await _window.collapse());
     if (!mounted) return;
     setState(() {
+      _visibleChat = null;
       _chatHead = null;
       _resizing = false;
     });
@@ -284,7 +334,7 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
   }
 
   Widget _buildChat() {
-    final chat = _chat!;
+    final chat = _visibleChat!;
     final keyboard = MediaQuery.viewInsetsOf(context).bottom;
     final head = _headRect(_chatHead!, keyboardOpen: keyboard > 0);
     return Stack(

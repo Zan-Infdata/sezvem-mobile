@@ -29,8 +29,10 @@ class CompanionActionContext {
     required this.window,
     required this.released,
     required void Function() onClose,
+    required bool Function() isClosed,
     required Future<void> Function() openChat,
   }) : _onClose = onClose,
+       _isClosed = isClosed,
        _openChat = openChat;
 
   /// Plays animations and sets the state, mood, and facing.
@@ -47,7 +49,10 @@ class CompanionActionContext {
   final Future<void> released;
 
   final void Function() _onClose;
+  final bool Function() _isClosed;
   final Future<void> Function() _openChat;
+
+  bool get isClosed => _isClosed();
 
   /// Opens the chat with the on-device assistant and completes when the user
   /// closes it. The window fills the screen meanwhile.
@@ -82,6 +87,7 @@ class CompanionActionController {
     required this.movement,
     required this.window,
     this.openChat = _noChat,
+    this.onIdle,
   });
 
   static Future<void> _noChat() async {}
@@ -93,6 +99,7 @@ class CompanionActionController {
 
   /// Shows the chat until the user closes it. Supplied by the overlay app.
   final Future<void> Function() openChat;
+  final void Function()? onIdle;
 
   bool _busy = false;
   bool _closed = false;
@@ -122,6 +129,7 @@ class CompanionActionController {
       window: window,
       released: released ?? Future.value(),
       onClose: () => _closed = true,
+      isClosed: () => _closed,
       openChat: openChat,
     );
     unawaited(_run(action, context));
@@ -139,10 +147,11 @@ class CompanionActionController {
     try {
       await action(context);
     } finally {
+      _busy = false;
       if (!_closed) {
         animator.state = CompanionState.idle;
+        onIdle?.call();
       }
-      _busy = false;
     }
   }
 }

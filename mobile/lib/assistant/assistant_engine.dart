@@ -61,7 +61,7 @@ abstract interface class AssistantEngine {
   Future<AssistantState> status();
 
   /// Loads the model if needed. Can take several seconds.
-  Future<AssistantState> load();
+  Future<AssistantState> load({String? checkInPrompt});
 
   /// Sends [text] in the current conversation and streams the reply in
   /// chunks. The stream ends when the reply is complete and fails if
@@ -107,12 +107,18 @@ class NativeAssistantEngine implements AssistantEngine {
   );
 
   @override
-  Future<AssistantState> load() async => AssistantState.fromMap(
-    await _methods.invokeMapMethod<Object?, Object?>('load', {
-      'backend': backend,
-      'systemInstruction': await _loadSoul(),
-    }),
-  );
+  Future<AssistantState> load({String? checkInPrompt}) async {
+    final soul = await _loadSoul();
+    return AssistantState.fromMap(
+      await _methods.invokeMapMethod('load', {
+        'backend': backend,
+        'systemInstruction': checkInPrompt == null
+            ? soul
+            : '$soul\n\n$checkInPrompt',
+        if (checkInPrompt != null) 'checkIn': true,
+      }),
+    );
+  }
 
   @override
   Stream<String> send(String text) {

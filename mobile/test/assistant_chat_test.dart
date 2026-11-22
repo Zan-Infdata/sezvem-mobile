@@ -86,6 +86,25 @@ void main() {
       expect(chat.canSend, isFalse);
       chat.dispose();
     });
+
+    test(
+      'check-in starts with a model turn and no visible user message',
+      () async {
+        final engine = _FakeEngine();
+        final chat = AssistantChat(
+          engine,
+          checkInPrompt: 'Ask a fixture question.',
+        );
+        addTearDown(chat.dispose);
+
+        await chat.prepare();
+        expect(engine.checkInPrompt, 'Ask a fixture question.');
+        expect(engine.sent.single, contains('Begin the monitoring check-in'));
+        expect(chat.messages.single.fromUser, isFalse);
+        await chat.prepare();
+        expect(engine.sent, hasLength(1));
+      },
+    );
   });
 
   test('soul.md is bundled and sets the refusal sentence', () async {
@@ -155,6 +174,26 @@ void main() {
       expect(state.modelPath, '/files/models/gemma-4-E2B-it.litertlm');
     });
 
+    test(
+      'load appends state prompts to the system instruction for a check-in',
+      () async {
+        final engine = create();
+        const prompts = 'First fixture prompt.\n\nSecond fixture prompt.';
+        await engine.load(checkInPrompt: prompts);
+        await engine.load();
+
+        expect(calls.first.arguments, {
+          'backend': 'gpu',
+          'systemInstruction': 'Only medicine.\n\n$prompts',
+          'checkIn': true,
+        });
+        expect(calls.last.arguments, {
+          'backend': 'gpu',
+          'systemInstruction': 'Only medicine.',
+        });
+      },
+    );
+
     test('send streams the chunks for its own id until done', () async {
       final engine = create();
       final received = <String>[];
@@ -213,6 +252,7 @@ class _FakeEngine implements AssistantEngine {
   var cancels = 0;
   var resets = 0;
   PlatformException? loadError;
+  String? checkInPrompt;
   final sent = <String>[];
   final reply = StreamController<String>();
 
@@ -221,8 +261,9 @@ class _FakeEngine implements AssistantEngine {
       const AssistantState(AssistantStatus.unloaded);
 
   @override
-  Future<AssistantState> load() async {
+  Future<AssistantState> load({String? checkInPrompt}) async {
     loads++;
+    this.checkInPrompt = checkInPrompt;
     final error = loadError;
     if (error != null) throw error;
     return const AssistantState(AssistantStatus.ready, backend: 'cpu');

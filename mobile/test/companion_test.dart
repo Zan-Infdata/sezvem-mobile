@@ -138,7 +138,11 @@ void main() {
     const normal = MonitoringStatus.normal;
     const warning = MonitoringStatus.warning;
     const critical = MonitoringStatus.critical;
+    const emergency = MonitoringStatus.emergency;
     const patientId = 'fixture-patient';
+    const emergencyNotice =
+        'Contact your medical team immediately. '
+        'Your monitoring results indicate a risk of complications.';
 
     MonitoringSnapshot snapshot(MonitoringStatus a, MonitoringStatus b) => (
       patientId: patientId,
@@ -168,6 +172,7 @@ void main() {
       await monitoring.retry();
       expect(companion.calls.where((call) => call == 'show'), hasLength(1));
       expect(companion.alerts, ['s-00000001: warning\ns-00000002: critical']);
+      expect(companion.checkInPrompts, isEmpty);
       for (final state in monitoring.debugStates) {
         expect(state, containsPair('summon', false));
         expect(state, containsPair('addressed', false));
@@ -176,7 +181,136 @@ void main() {
     });
 
     test(
-      'retains worse history and re-alerts only active states on a swipe',
+      'summons the companion and shows one urgent alert for emergency states',
+      () async {
+        final companion = _FakeCompanionOverlay(granted: false);
+        final monitoring = CompanionMonitoring(companion)
+          ..setPatient(patientId);
+        addTearDown(monitoring.dispose);
+
+        final emergencies = snapshot(emergency, emergency);
+        await monitoring.update(emergencies);
+        expect(companion.showing, isFalse);
+        expect(companion.alerts, isEmpty);
+        expect(cached(monitoring, 0), containsPair('addressed', true));
+        expect(cached(monitoring, 1), containsPair('addressed', true));
+
+        companion.granted = true;
+        await monitoring.retry();
+        await monitoring.update(emergencies);
+        expect(companion.showing, isTrue);
+        expect(companion.alerts, [emergencyNotice]);
+        expect(cached(monitoring, 0), containsPair('addressed', false));
+        expect(cached(monitoring, 1), containsPair('addressed', false));
+
+        companion.showing = false;
+        await monitoring.onDismissed();
+        expect(companion.showing, isTrue);
+        expect(companion.alerts, [emergencyNotice, emergencyNotice]);
+      },
+    );
+
+    test(
+      'emergency escalation interrupts check-ins and defers lower-priority states',
+      () async {
+        final companion = _FakeCompanionOverlay(granted: true, showing: true);
+        final monitoring = CompanionMonitoring(companion)
+          ..setPatient(patientId);
+        addTearDown(monitoring.dispose);
+
+        Future<void> update(MonitoringStatus first, MonitoringStatus second) =>
+            monitoring.update((
+              patientId: patientId,
+              states: [
+                MonitoringState(
+                  id: 's-00000001',
+                  status: first,
+                  prompt: 'First check-in.',
+                ),
+                MonitoringState(
+                  id: 's-00000002',
+                  status: second,
+                  prompt: 'Second check-in.',
+                ),
+              ],
+            ));
+
+        await update(critical, normal);
+        expect(companion.checkInPrompts, hasLength(1));
+        expect(cached(monitoring, 0), containsPair('resolved', true));
+
+        await update(emergency, warning);
+        expect(companion.calls, isNot(contains('show')));
+        expect(companion.calls.last, 'clearCheckIn');
+        expect(companion.alerts, [emergencyNotice]);
+        expect(companion.checkInPrompts, hasLength(1));
+        expect(cached(monitoring, 1), containsPair('addressed', true));
+
+        await monitoring.retry();
+        expect(companion.checkInPrompts, hasLength(1));
+        expect(companion.alerts, [emergencyNotice]);
+
+        await update(normal, warning);
+        expect(companion.checkInPrompts, hasLength(2));
+        expect(cached(monitoring, 1), containsPair('addressed', false));
+      },
+    );
+
+    test(
+      'a prompted summon starts a check-in directly and retries failed handoffs',
+      () async {
+        final companion = _FakeCompanionOverlay(granted: true);
+        final monitoring = CompanionMonitoring(companion)
+          ..setPatient(patientId);
+        addTearDown(monitoring.dispose);
+
+        const first = 'First fixture prompt.';
+        const second = 'Second fixture prompt.';
+        Future<void> update(MonitoringStatus status, {bool both = true}) =>
+            monitoring.update((
+              patientId: patientId,
+              states: [
+                MonitoringState(
+                  id: 's-00000001',
+                  status: status,
+                  prompt: first,
+                ),
+                if (both)
+                  const MonitoringState(
+                    id: 's-00000002',
+                    status: normal,
+                    prompt: second,
+                  ),
+              ],
+            ));
+
+        companion.failCheckIn = true;
+        await update(warning);
+        expect(cached(monitoring, 0), containsPair('addressed', true));
+        companion.failCheckIn = false;
+        await monitoring.retry();
+        await update(critical);
+        await update(critical);
+        expect(companion.checkInPrompts, [
+          '$first\n\n$second',
+          '$first\n\n$second',
+        ]);
+        expect(cached(monitoring, 0), isNot(contains('prompt')));
+        expect(companion.alerts, isEmpty);
+
+        await update(normal);
+        await update(critical, both: false);
+        expect(companion.checkInPrompts.last, first);
+        expect(companion.checkInPrompts, hasLength(3));
+
+        monitoring.setPatient('other-patient');
+        await monitoring.retry();
+        expect(companion.calls.last, 'clearCheckIn');
+      },
+    );
+
+    test(
+      're-addresses every resolved-flag state on a swipe, including recovered states',
       () async {
         final companion = _FakeCompanionOverlay(granted: true, showing: true);
         final monitoring = CompanionMonitoring(companion)
@@ -184,6 +318,10 @@ void main() {
         addTearDown(monitoring.dispose);
 
         await monitoring.update(snapshot(critical, warning));
+        await monitoring.update((
+          patientId: patientId,
+          states: const [MonitoringState(id: 's-00000003', status: normal)],
+        ));
         expect(companion.calls, isNot(contains('show')));
         await monitoring.update(snapshot(normal, normal));
         await monitoring.update(snapshot(normal, warning));
@@ -197,14 +335,32 @@ void main() {
         companion.showing = false;
         await monitoring.onDismissed();
         expect(companion.showing, isTrue);
-        expect(companion.alerts.last, 's-00000002: warning');
+        expect(
+          companion.alerts.last,
+          's-00000001: normal (previously critical)\ns-00000002: warning',
+        );
         expect(cached(monitoring, 1), containsPair('addressed', false));
 
         await monitoring.update(snapshot(normal, normal));
         companion.showing = false;
+        companion.granted = false;
         await monitoring.onDismissed();
-        expect(companion.showing, isFalse);
         expect(companion.alerts, hasLength(2));
+        expect(cached(monitoring, 0), containsPair('addressed', true));
+        expect(cached(monitoring, 1), containsPair('addressed', true));
+        expect(cached(monitoring, 2), containsPair('resolved', false));
+        expect(cached(monitoring, 2), containsPair('addressed', false));
+
+        companion.granted = true;
+        await monitoring.retry();
+        expect(companion.showing, isTrue);
+        expect(
+          companion.alerts.last,
+          's-00000001: normal (previously critical)\n'
+          's-00000002: normal (previously warning)',
+        );
+        expect(cached(monitoring, 0), containsPair('addressed', false));
+        expect(cached(monitoring, 1), containsPair('addressed', false));
       },
     );
 
@@ -572,6 +728,88 @@ void main() {
       await finish(tester);
     });
 
+    testWidgets(
+      'a summon opens the check-in and tapping resumes it until the patient changes',
+      (tester) async {
+        const prompt = 'First fixture prompt.\n\nSecond fixture prompt.';
+        await enter(tester);
+        await native.sendWindowEvent(
+          tester,
+          const MethodCall('startCheckIn', {'prompt': prompt}),
+        );
+        await pumpFor(tester, const Duration(milliseconds: 1300));
+        expect(assistant.checkInPrompts, [prompt]);
+        expect(assistant.sent, [contains('Begin the monitoring check-in')]);
+        assistant.reply.add('How does your heart feel right now?');
+        await tester.pump();
+        expect(
+          find.text('How does your heart feel right now?'),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.byTooltip('Close chat'));
+        await pumpFor(tester, const Duration(milliseconds: 1300));
+        expect(native.calls('collapse'), hasLength(1));
+        await tester.tap(companion);
+        await pumpFor(tester, const Duration(milliseconds: 1300));
+        expect(assistant.checkInPrompts, [prompt]);
+        expect(assistant.sent, hasLength(1));
+        expect(
+          find.text('How does your heart feel right now?'),
+          findsOneWidget,
+        );
+
+        await native.sendWindowEvent(
+          tester,
+          const MethodCall('startCheckIn', {'prompt': prompt}),
+        );
+        await pumpFor(tester, const Duration(milliseconds: 1300));
+        expect(native.calls('collapse'), hasLength(1));
+        expect(assistant.sent, hasLength(1));
+
+        await native.sendWindowEvent(tester, const MethodCall('clearCheckIn'));
+        await pumpFor(tester, const Duration(milliseconds: 1300));
+        expect(native.calls('collapse'), hasLength(2));
+        await tester.tap(companion);
+        await pumpFor(tester, const Duration(milliseconds: 1300));
+        expect(assistant.checkInPrompts, [prompt, null]);
+        expect(find.text('How does your heart feel right now?'), findsNothing);
+        expect(assistant.sent, hasLength(1));
+        await finish(tester);
+      },
+    );
+
+    testWidgets(
+      'a tap starts a queued check-in closed before its first question',
+      (tester) async {
+        const prompt = 'Fixture check-in prompt.';
+        native.queuedCheckIn = prompt;
+        await tester.pumpWidget(
+          SizedBox(
+            width: 192,
+            height: 192,
+            child: CompanionOverlayApp(assistant: assistant),
+          ),
+        );
+        final panel = find.byType(CompanionChatPanel);
+        for (var frame = 0; frame < 190 && panel.evaluate().isEmpty; frame++) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        expect(native.calls('readyForCheckIns'), hasLength(1));
+        expect(panel, findsOneWidget);
+        expect(assistant.sent, isEmpty);
+
+        await native.pressBack(tester);
+        await pumpFor(tester, const Duration(milliseconds: 1300));
+        expect(assistant.sent, isEmpty);
+        await tester.tap(companion);
+        await pumpFor(tester, const Duration(milliseconds: 1300));
+        expect(assistant.checkInPrompts, [prompt]);
+        expect(assistant.sent, [contains('Begin the monitoring check-in')]);
+        await finish(tester);
+      },
+    );
+
     testWidgets('swipes left and right walk off and close', (tester) async {
       await enter(tester);
       await tester.fling(companion, const Offset(-60, 0), 1000);
@@ -766,6 +1004,7 @@ class _FakeNativeWindow {
   double width = 192;
   double height = 192;
   CompanionLook look = const CompanionLook();
+  String? queuedCheckIn;
   (double, double, double, double)? _collapsed;
   double? lastMoveY;
 
@@ -802,6 +1041,13 @@ class _FakeNativeWindow {
               return look.toMap();
             case 'getLayout':
               return _layout();
+            case 'readyForCheckIns':
+              if (queuedCheckIn case final prompt?) {
+                queuedCheckIn = null;
+                await _sendWindowEvent(
+                  MethodCall('startCheckIn', {'prompt': prompt}),
+                );
+              }
             case 'moveTo':
               x = (args['x'] as num).toDouble();
               y = (args['y'] as num).toDouble();
@@ -866,16 +1112,21 @@ class _FakeNativeWindow {
   }
 
   /// Presses Back, as the service reports it while the window is expanded.
-  Future<void> pressBack(WidgetTester tester) async {
+  Future<void> pressBack(WidgetTester tester) =>
+      sendWindowEvent(tester, const MethodCall('backPressed'));
+
+  Future<void> sendWindowEvent(WidgetTester tester, MethodCall call) async {
+    await _sendWindowEvent(call);
+    await tester.pump();
+  }
+
+  Future<void> _sendWindowEvent(MethodCall call) async {
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .handlePlatformMessage(
           _channel.name,
-          const StandardMethodCodec().encodeMethodCall(
-            const MethodCall('backPressed'),
-          ),
+          const StandardMethodCodec().encodeMethodCall(call),
           (_) {},
         );
-    await tester.pump();
   }
 
   void uninstall() {
@@ -919,8 +1170,10 @@ class _FakeCompanionOverlay implements CompanionOverlay {
   bool granted;
   bool showing;
   bool failAlert = false;
+  bool failCheckIn = false;
   final calls = <String>[];
   final alerts = <String>[];
+  final checkInPrompts = <String>[];
 
   @override
   Future<bool> hasPermission() async {
@@ -952,6 +1205,16 @@ class _FakeCompanionOverlay implements CompanionOverlay {
     alerts.add(message);
     return true;
   }
+
+  @override
+  Future<bool> startCheckIn(String prompt) async {
+    if (failCheckIn) return false;
+    checkInPrompts.add(prompt);
+    return true;
+  }
+
+  @override
+  Future<void> clearCheckIn() async => calls.add('clearCheckIn');
 
   @override
   Future<void> hide() async {
@@ -995,6 +1258,7 @@ class _FakeAssistant implements AssistantEngine {
     loadTime: Duration(milliseconds: 1500),
   );
   var loads = 0;
+  final checkInPrompts = <String?>[];
   final sent = <String>[];
   final reply = StreamController<String>();
 
@@ -1002,8 +1266,9 @@ class _FakeAssistant implements AssistantEngine {
   Future<AssistantState> status() async => loadResult;
 
   @override
-  Future<AssistantState> load() async {
+  Future<AssistantState> load({String? checkInPrompt}) async {
     loads++;
+    checkInPrompts.add(checkInPrompt);
     return loadResult;
   }
 

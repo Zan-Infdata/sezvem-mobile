@@ -66,6 +66,7 @@ void main() {
     final messenger = tester.binding.defaultBinaryMessenger;
     var companionShowing = false;
     final monitoringAlerts = <Object?>[];
+    final checkInPrompts = <Object?>[];
     messenger.setMockMethodCallHandler(settingsChannel, (call) async => null);
     messenger.setMockMethodCallHandler(companionChannel, (call) async {
       switch (call.method) {
@@ -77,6 +78,9 @@ void main() {
           return companionShowing = true;
         case 'showAlert':
           monitoringAlerts.add(call.arguments['message']);
+          return true;
+        case 'startCheckIn':
+          checkInPrompts.add(call.arguments['prompt']);
           return true;
       }
       return null;
@@ -260,12 +264,22 @@ void main() {
     api.snapshots.add((
       patientId: 'p-abcdef01',
       states: const [
-        MonitoringState(id: 's-00000001', status: MonitoringStatus.warning),
+        MonitoringState(
+          id: 's-00000001',
+          status: MonitoringStatus.warning,
+          prompt: 'First fixture prompt.',
+        ),
+        MonitoringState(
+          id: 's-00000002',
+          status: MonitoringStatus.normal,
+          prompt: 'Second fixture prompt.',
+        ),
       ],
     ));
     await tester.pumpAndSettle();
     expect(companionShowing, isTrue);
-    expect(monitoringAlerts, ['s-00000001: warning']);
+    expect(monitoringAlerts, isEmpty);
+    expect(checkInPrompts, ['First fixture prompt.\n\nSecond fixture prompt.']);
     companionShowing = false;
     await messenger.handlePlatformMessage(
       dismissalsChannel.name,
@@ -274,7 +288,11 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(companionShowing, isTrue);
-    expect(monitoringAlerts, ['s-00000001: warning', 's-00000001: warning']);
+    expect(monitoringAlerts, isEmpty);
+    expect(
+      checkInPrompts,
+      List.filled(2, 'First fixture prompt.\n\nSecond fixture prompt.'),
+    );
     await tester.pumpWidget(const SizedBox.shrink());
     unawaited(api.snapshots.close());
     unawaited(adapter.events.close());
