@@ -240,7 +240,37 @@ CompanionPose _poseAt(
     inflate: 1 + t * (CompanionStyle.maxInflate - 1),
     facing: facing,
   ),
+  CompanionAnimation.surprised => _emotionAt(
+    CompanionEmotion.surprised,
+    t,
+    facing,
+  ),
+  CompanionAnimation.laughing => _emotionAt(
+    CompanionEmotion.laughing,
+    t,
+    facing,
+  ),
+  CompanionAnimation.scared => _emotionAt(CompanionEmotion.scared, t, facing),
+  CompanionAnimation.confused => _emotionAt(
+    CompanionEmotion.confused,
+    t,
+    facing,
+  ),
+  CompanionAnimation.happy => _emotionAt(CompanionEmotion.happy, t, facing),
 };
+
+/// [emotion] at full strength, [t] of the way through two seconds. Steps of
+/// 0.1 land on different phases of each looping motion.
+CompanionPose _emotionAt(
+  CompanionEmotion emotion,
+  double t,
+  CompanionFacing facing,
+) => CompanionPose(
+  emotion: emotion,
+  emotionAmount: 1,
+  emotionTime: t * 2,
+  facing: facing,
+);
 
 Future<Uint8List> _render(
   CompanionStyle style,

@@ -5,6 +5,7 @@ import 'package:flutter/painting.dart';
 
 import '../../companion_state.dart';
 import '../companion_style.dart';
+import '../companion_emotion.dart';
 import 'dress_up_parts.dart';
 
 /// A companion put together from a base, a hat, and a top.
@@ -113,8 +114,13 @@ class DressUpCompanionStyle extends CompanionStyle {
     final flip = Curves.easeInOut.transform(pose.backflip) * 2 * math.pi;
     final jump = math.sin(pose.backflip * math.pi);
 
-    final lift = bob * radius * 0.18 + jump * jumpHeight;
-    final center = Offset(size.width / 2, groundY - radius - lift);
+    // Emotions move the whole body. See [EmotionMotion].
+    final motion = EmotionMotion.of(pose, direction);
+    final lift = bob * radius * 0.18 + jump * jumpHeight + motion.lift * radius;
+    final center = Offset(
+      size.width / 2 + motion.shiftX * radius,
+      groundY - radius - lift,
+    );
 
     final shadow = 1 - jump * 0.6;
     canvas.drawOval(
@@ -132,6 +138,8 @@ class DressUpCompanionStyle extends CompanionStyle {
     canvas.translate(0, radius);
     canvas.rotate(tilt * direction);
     canvas.scale(1 + squash * 0.18, 1 - squash * 0.18);
+    canvas.rotate(motion.rotation);
+    canvas.scale(motion.scaleX, motion.scaleY);
     canvas.translate(0, -radius);
 
     final outline = base.outline(radius);
@@ -175,20 +183,23 @@ class DressUpCompanionStyle extends CompanionStyle {
         side * radius * base.eyeSpacing + look,
         radius * (base.eyeY + pose.sad * 0.06),
       );
+      // Emotions widen, squeeze, or unbalance the eyes.
+      final scale = emotionEyeScale(pose, side);
       final eyeHeight =
           radius *
           base.eyeHeight *
           (1 - pose.blink * 0.9) *
-          (1 - pose.sad * 0.3);
+          (1 - pose.sad * 0.3) *
+          scale.height;
       canvas.drawOval(
         Rect.fromCenter(
           center: eye,
-          width: radius * base.eyeWidth,
+          width: radius * base.eyeWidth * scale.width,
           height: eyeHeight,
         ),
         Paint()..color = const Color(0xFFFFFFFF),
       );
-      if (pose.blink < 0.6) {
+      if (pose.blink < 0.6 && scale.height > 0.5) {
         final pupil =
             eye +
             Offset(

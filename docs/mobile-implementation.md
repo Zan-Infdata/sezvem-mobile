@@ -120,7 +120,7 @@ The companion is a small animated character that appears over other Android apps
 | Tap | Bounces and opens the chat with the on-device assistant. See [Companion chat with on-device Gemma](#companion-chat-with-on-device-gemma). |
 | Swipe left or right | Runs off that edge and its window closes. |
 | Swipe up | Jumps and does a backflip. |
-| Swipe down | Looks sad for two seconds. |
+| Swipe down | Looks sad for two seconds. Each later swipe down plays the next emotion. See [Bot style and emotions](#bot-style-and-emotions). |
 | Hold | Plays an inflating sound and grows to 1.8 times its size over two seconds. Shrinks back on release. |
 
 A short drag snaps back without triggering an action.
@@ -367,3 +367,36 @@ From `mobile/`, run `flutter test test/telemetry_api_test.dart test/companion_te
 The file is a Flutter asset, so edit it without touching code. It lives under `mobile/assets/` rather than `docs/` because the app reads it at runtime. `NativeAssistantEngine` reads it and sends it as `systemInstruction` with the `load` call. `AssistantEngine.kt` uses it as the LiteRT-LM system instruction. If the instruction changes while the model is loaded, the conversation starts over. A short fallback in `AssistantEngine.kt` applies only if no instruction arrives.
 
 A 2B model follows these rules most of the time, not always. Check new wording on the phone with one medical and one unrelated question. `flutter test test/assistant_chat_test.dart` checks that the asset is bundled with the refusal sentence and that `load` sends it.
+
+## Bot style and emotions
+
+**Bot** is the default companion style. Its look takes inspiration from [bloub](https://bloub.vercel.app), an animated SVG avatar in the style of the x.ai bot: a solid body with two rounded-bar eyes. The eyes are cut out of the body, so whatever is behind the companion shows through them. They sit on an imagined sphere inside the body. A sideways or upward gaze moves the eyes across the body and foreshortens them, so the flat shape looks round. Each expression is a set of eye sizes and tilts plus a gaze direction, and the face blends between them. Bot isn't a copy of bloub's art, geometry, or expressions.
+
+In **Settings → Companion style → Bot**, **Shape** picks a **Green circle** (the Classic colours) or an **Orange triangle** (the Dress-up triangle colours). The triangle's body is 0.85 times the circle's size so it still fits the window while inflated. Its face sits lower and turns less, so the eyes stay on the body. A saved Classic or Dress-up look stays selected. Bot only applies when the look is unset or chosen in settings.
+
+| Emotion | Face | Body |
+| --- | --- | --- |
+| Surprised | Wide, round eyes looking straight out | Quick startled hop that stretches the body |
+| Laughing | Eyes squeezed into arches, head tilted back | Fast small bounces with a side-to-side wobble |
+| Scared | Tall, worried eyes looking down, gaze darting | Shrinks, leans back, trembles, and loses some colour |
+| Confused | One eye open and one squinting, glancing away | Tilts its head and sways slowly |
+| Happy | Smiling arches looking up | A few springy hops |
+
+`CompanionAnimator.emote` plays one emotion on top of the current mood and completes when it ends. It eases in over 0.18 s, holds, and eases out over 0.3 s. Durations range from 1.4 s for surprised to 2 s for confused. A new emotion replaces one that is playing. The pose carries the emotion, its strength, and the time since it started, so looping motions such as trembling stay smooth.
+
+| Path | Role |
+| --- | --- |
+| `mobile/lib/companion/styles/bot_style.dart` | The Bot style: shapes, cut-out eyes on a sphere, and the face for each mood and emotion. |
+| `mobile/lib/companion/styles/companion_emotion.dart` | Body motion for each emotion and an eye scale for round-eyed styles. Every style uses it. |
+| `mobile/lib/companion/companion_state.dart` | `CompanionEmotion`. |
+| `mobile/lib/companion/styles/companion_style.dart` | Five new `CompanionAnimation` values and the pose's emotion fields. |
+| `mobile/lib/companion/companion_animator.dart` | `emote`, with the emotion's strength and elapsed time. |
+| `mobile/lib/companion/companion_test_actions.dart` | Swipe down plays the next entry of `moodShowcase`: sad, then each emotion. |
+
+Decisions:
+
+- The emotions are `CompanionAnimation` values, so the style test checks that every style and every option combination shows each one and stays inside its window. Classic and Dress-up use the shared body motion and scale their round eyes.
+- Bot draws with the canvas and `Path.combine`, so it needs no assets or packages.
+- Emotions are only reachable through swipe down for now. Monitoring alerts or the assistant could call `emote` next. The main app would need a channel call like `moveTo` to request one.
+
+To verify, run `flutter analyze` and `flutter test` from `mobile/`. `test/companion_style_test.dart` draws every emotion for every style variant across two seconds. `test/companion_emotion_test.dart` covers easing, replacement, and the swipe-down order. On a phone, install the app, open **Settings**, check that **Bot** is selected or select it, and tap **TEST**. Swipe down six times, waiting for each reaction to end, and check sad, surprised, laughing, scared, confused, and happy. Switch **Shape** to the triangle and repeat.

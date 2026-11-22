@@ -14,6 +14,7 @@ import 'package:ixland_mobile/companion/companion_overlay.dart';
 import 'package:ixland_mobile/companion/companion_overlay_app.dart';
 import 'package:ixland_mobile/companion/companion_state.dart';
 import 'package:ixland_mobile/companion/companion_window.dart';
+import 'package:ixland_mobile/companion/styles/bot_style.dart';
 import 'package:ixland_mobile/companion/styles/classic_style.dart';
 import 'package:ixland_mobile/companion/styles/companion_look.dart';
 import 'package:ixland_mobile/companion/styles/companion_style.dart';
@@ -272,7 +273,7 @@ void main() {
             )
             .value;
 
-    testWidgets('opens from Connected devices with Classic selected', (
+    testWidgets('opens from Connected devices with Bot selected', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -282,8 +283,33 @@ void main() {
       await pumpFor(tester, const Duration(milliseconds: 500));
 
       expect(find.text('Companion style'), findsOneWidget);
+      expect(find.text('Bot'), findsOneWidget);
       expect(find.text('Classic'), findsOneWidget);
-      expect(selected(tester, 'Classic'), isTrue);
+      expect(selected(tester, 'Bot'), isTrue);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('picks the Bot shape', (tester) async {
+      final companion = _FakeCompanionOverlay(granted: true);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            companion: companion,
+            patientSettings: PatientSettings(),
+          ),
+        ),
+      );
+      await pumpFor(tester, const Duration(milliseconds: 100));
+      expect(find.text('Shape'), findsOneWidget);
+      expect(find.text('Green circle'), findsOneWidget);
+
+      await tester.tap(find.text('Orange triangle'));
+      await pumpFor(tester, const Duration(milliseconds: 100));
+      expect(companion.savedLook.choices['bot'], {'shape': 'triangle'});
+      expect(
+        companion.savedLook.resolve(),
+        const BotCompanionStyle(shape: BotTriangle()),
+      );
       await tester.pumpWidget(const SizedBox());
     });
 
@@ -318,6 +344,7 @@ void main() {
           home: SettingsScreen(
             companion: companion,
             patientSettings: PatientSettings(),
+            styles: const [ClassicCompanionStyle(), DressUpCompanionStyle()],
           ),
         ),
       );

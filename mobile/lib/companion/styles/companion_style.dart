@@ -30,6 +30,21 @@ enum CompanionAnimation {
 
   /// Growing while held.
   inflate,
+
+  /// Startled jump with wide eyes.
+  surprised,
+
+  /// Shaking with laughter, eyes squeezed shut.
+  laughing,
+
+  /// Shrinking and trembling.
+  scared,
+
+  /// Tilted head with uneven eyes.
+  confused,
+
+  /// Smiling eyes and little hops.
+  happy,
 }
 
 /// The progress of every [CompanionAnimation] for one frame.
@@ -49,23 +64,32 @@ class CompanionPose {
     this.backflip = 0,
     this.sad = 0,
     this.inflate = 1,
+    this.emotion,
+    this.emotionAmount = 0,
+    this.emotionTime = 0,
     this.facing = CompanionFacing.left,
   });
 
   /// A pose with only [animation] active at a clearly visible point.
-  factory CompanionPose.example(CompanionAnimation animation) =>
-      switch (animation) {
-        CompanionAnimation.idle => const CompanionPose(idle: 0.25),
-        CompanionAnimation.walk => const CompanionPose(
-          walking: true,
-          walk: 0.25,
-        ),
-        CompanionAnimation.blink => const CompanionPose(blink: 1),
-        CompanionAnimation.bounce => const CompanionPose(bounce: 0.5),
-        CompanionAnimation.backflip => const CompanionPose(backflip: 0.5),
-        CompanionAnimation.sad => const CompanionPose(sad: 1),
-        CompanionAnimation.inflate => const CompanionPose(inflate: 1.8),
-      };
+  factory CompanionPose.example(
+    CompanionAnimation animation,
+  ) => switch (animation) {
+    CompanionAnimation.idle => const CompanionPose(idle: 0.25),
+    CompanionAnimation.walk => const CompanionPose(walking: true, walk: 0.25),
+    CompanionAnimation.blink => const CompanionPose(blink: 1),
+    CompanionAnimation.bounce => const CompanionPose(bounce: 0.5),
+    CompanionAnimation.backflip => const CompanionPose(backflip: 0.5),
+    CompanionAnimation.sad => const CompanionPose(sad: 1),
+    CompanionAnimation.inflate => const CompanionPose(inflate: 1.8),
+    CompanionAnimation.surprised => _emotionExample(CompanionEmotion.surprised),
+    CompanionAnimation.laughing => _emotionExample(CompanionEmotion.laughing),
+    CompanionAnimation.scared => _emotionExample(CompanionEmotion.scared),
+    CompanionAnimation.confused => _emotionExample(CompanionEmotion.confused),
+    CompanionAnimation.happy => _emotionExample(CompanionEmotion.happy),
+  };
+
+  static CompanionPose _emotionExample(CompanionEmotion emotion) =>
+      CompanionPose(emotion: emotion, emotionAmount: 1, emotionTime: 0.4);
 
   /// Idle loop phase from 0 to 1. It repeats while the companion stands.
   final double idle;
@@ -91,8 +115,22 @@ class CompanionPose {
   /// Size relative to normal, from 1 to [CompanionStyle.maxInflate].
   final double inflate;
 
+  /// The emotion playing, or null for none.
+  final CompanionEmotion? emotion;
+
+  /// How strongly [emotion] shows, from 0 to 1. It rises at the start of the
+  /// reaction and falls at the end.
+  final double emotionAmount;
+
+  /// Seconds since [emotion] started, for its looping motion.
+  final double emotionTime;
+
   /// Which way the companion looks and walks.
   final CompanionFacing facing;
+
+  /// How strongly [emotion] shows if it is [which], otherwise 0.
+  double amountOf(CompanionEmotion which) =>
+      emotion == which ? emotionAmount : 0;
 
   @override
   bool operator ==(Object other) =>
@@ -105,6 +143,9 @@ class CompanionPose {
       other.backflip == backflip &&
       other.sad == sad &&
       other.inflate == inflate &&
+      other.emotion == emotion &&
+      other.emotionAmount == emotionAmount &&
+      other.emotionTime == emotionTime &&
       other.facing == facing;
 
   @override
@@ -117,6 +158,9 @@ class CompanionPose {
     backflip,
     sad,
     inflate,
+    emotion,
+    emotionAmount,
+    emotionTime,
     facing,
   );
 }

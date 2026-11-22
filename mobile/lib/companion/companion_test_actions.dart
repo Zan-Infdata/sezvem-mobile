@@ -5,18 +5,29 @@ import 'companion_state.dart';
 import 'styles/companion_style.dart';
 
 /// Actions for the six companion inputs. Tap opens the chat. The others are
-/// tests.
+/// tests. Each swipe down plays the next of [moodShowcase].
 ///
 /// Replace these with real behavior by mapping an input to another
 /// [CompanionAction].
-Map<CompanionInput, CompanionAction> testCompanionActions() => {
-  CompanionInput.tap: chat,
-  CompanionInput.swipeLeft: (context) => leave(context, toLeft: true),
-  CompanionInput.swipeRight: (context) => leave(context, toLeft: false),
-  CompanionInput.swipeUp: backflip,
-  CompanionInput.swipeDown: beSad,
-  CompanionInput.hold: inflate,
-};
+Map<CompanionInput, CompanionAction> testCompanionActions() {
+  var nextMood = 0;
+  return {
+    CompanionInput.tap: chat,
+    CompanionInput.swipeLeft: (context) => leave(context, toLeft: true),
+    CompanionInput.swipeRight: (context) => leave(context, toLeft: false),
+    CompanionInput.swipeUp: backflip,
+    CompanionInput.swipeDown: (context) =>
+        moodShowcase[nextMood++ % moodShowcase.length](context),
+    CompanionInput.hold: inflate,
+  };
+}
+
+/// Sadness and then each emotion, in the order swiping down plays them.
+final moodShowcase = <CompanionAction>[
+  beSad,
+  for (final emotion in CompanionEmotion.values)
+    (context) => context.animator.emote(emotion),
+];
 
 /// How much faster than walking the companion moves to and from the chat.
 const chatMoveSpeedFactor = 8.0;

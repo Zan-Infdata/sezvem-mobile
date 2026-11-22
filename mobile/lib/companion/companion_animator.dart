@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/animation.dart';
 import 'package:flutter/foundation.dart';
 
@@ -29,8 +31,9 @@ class CompanionAnimator extends ChangeNotifier {
         value: 1,
         lowerBound: 1,
         upperBound: maxScale,
-      ) {
-    for (final controller in [_bounce, _flip, _sadness, _scale]) {
+      ),
+      _emote = AnimationController(vsync: vsync) {
+    for (final controller in [_bounce, _flip, _sadness, _scale, _emote]) {
       controller.addListener(notifyListeners);
     }
   }
@@ -42,6 +45,8 @@ class CompanionAnimator extends ChangeNotifier {
   final AnimationController _flip;
   final AnimationController _sadness;
   final AnimationController _scale;
+  final AnimationController _emote;
+  CompanionEmotion? _emotion;
   var _state = CompanionState.hidden;
   var _facing = CompanionFacing.left;
 
@@ -70,6 +75,55 @@ class CompanionAnimator extends ChangeNotifier {
 
   /// Size relative to normal, from 1 to [maxScale].
   double get scale => _scale.value;
+
+  /// The emotion playing, or null for none.
+  CompanionEmotion? get emotion => _emotion;
+
+  /// How strongly [emotion] shows, from 0 to 1. It eases in over
+  /// [emotionRise] and out over [emotionFall].
+  double get emotionAmount {
+    if (_emotion == null) return 0;
+    final elapsed = emotionTime;
+    final total = _emotionSeconds(_emote.duration);
+    final rising = elapsed / _emotionSeconds(emotionRise);
+    final falling = (total - elapsed) / _emotionSeconds(emotionFall);
+    return Curves.easeOut.transform(math.min(rising, falling).clamp(0.0, 1.0));
+  }
+
+  /// Seconds since [emotion] started.
+  double get emotionTime =>
+      _emotion == null ? 0 : _emote.value * _emotionSeconds(_emote.duration);
+
+  static const emotionRise = Duration(milliseconds: 180);
+  static const emotionFall = Duration(milliseconds: 300);
+
+  /// How long each emotion plays by default.
+  static Duration emotionDuration(CompanionEmotion emotion) =>
+      switch (emotion) {
+        CompanionEmotion.surprised => const Duration(milliseconds: 1400),
+        CompanionEmotion.laughing => const Duration(milliseconds: 1800),
+        CompanionEmotion.scared => const Duration(milliseconds: 1800),
+        CompanionEmotion.confused => const Duration(milliseconds: 2000),
+        CompanionEmotion.happy => const Duration(milliseconds: 1600),
+      };
+
+  static double _emotionSeconds(Duration? duration) =>
+      (duration?.inMicroseconds ?? 1) / Duration.microsecondsPerSecond;
+
+  /// Shows [emotion] for [duration], or its [emotionDuration], then returns
+  /// to the current mood. A new emotion replaces one that is playing.
+  Future<void> emote(CompanionEmotion emotion, {Duration? duration}) {
+    _emotion = emotion;
+    _emote.duration = duration ?? emotionDuration(emotion);
+    final clip = _emote.forward(from: 0);
+    return _settle(clip).then((_) {
+      // A later emotion may have taken over meanwhile.
+      if (_emotion == emotion && !_emote.isAnimating) {
+        _emotion = null;
+        notifyListeners();
+      }
+    });
+  }
 
   /// A quick squash and stretch.
   Future<void> bounce() => _settle(_bounce.forward(from: 0));
@@ -114,7 +168,7 @@ class CompanionAnimator extends ChangeNotifier {
 
   @override
   void dispose() {
-    for (final controller in [_bounce, _flip, _sadness, _scale]) {
+    for (final controller in [_bounce, _flip, _sadness, _scale, _emote]) {
       controller.dispose();
     }
     super.dispose();

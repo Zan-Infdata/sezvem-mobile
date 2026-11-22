@@ -5,6 +5,7 @@ import 'package:flutter/painting.dart';
 
 import '../companion_state.dart';
 import 'companion_style.dart';
+import 'companion_emotion.dart';
 
 /// The original look: a round teal body with two eyes that look where it
 /// faces. Drawn with the canvas, so it needs no assets.
@@ -45,8 +46,13 @@ class ClassicCompanionStyle extends CompanionStyle {
     final flip = Curves.easeInOut.transform(pose.backflip) * 2 * math.pi;
     final jump = math.sin(pose.backflip * math.pi);
 
-    final lift = bob * radius * 0.18 + jump * jumpHeight;
-    final center = Offset(size.width / 2, groundY - radius - lift);
+    // Emotions move the whole body. See [EmotionMotion].
+    final motion = EmotionMotion.of(pose, direction);
+    final lift = bob * radius * 0.18 + jump * jumpHeight + motion.lift * radius;
+    final center = Offset(
+      size.width / 2 + motion.shiftX * radius,
+      groundY - radius - lift,
+    );
 
     // The shadow shrinks as the character leaves the ground.
     final shadow = 1 - jump * 0.6;
@@ -66,6 +72,8 @@ class ClassicCompanionStyle extends CompanionStyle {
     canvas.translate(0, radius);
     canvas.rotate(tilt * direction);
     canvas.scale(1 + squash * 0.18, 1 - squash * 0.18);
+    canvas.rotate(motion.rotation);
+    canvas.scale(motion.scaleX, motion.scaleY);
     canvas.translate(0, -radius);
 
     // sad: the body turns blue.
@@ -98,13 +106,23 @@ class ClassicCompanionStyle extends CompanionStyle {
         side * radius * 0.36 + look,
         -radius * (0.12 - pose.sad * 0.06),
       );
+      // Emotions widen, squeeze, or unbalance the eyes.
+      final scale = emotionEyeScale(pose, side);
       final eyeHeight =
-          radius * 0.5 * (1 - pose.blink * 0.9) * (1 - pose.sad * 0.3);
+          radius *
+          0.5 *
+          (1 - pose.blink * 0.9) *
+          (1 - pose.sad * 0.3) *
+          scale.height;
       canvas.drawOval(
-        Rect.fromCenter(center: eye, width: radius * 0.38, height: eyeHeight),
+        Rect.fromCenter(
+          center: eye,
+          width: radius * 0.38 * scale.width,
+          height: eyeHeight,
+        ),
         Paint()..color = const Color(0xFFFFFFFF),
       );
-      if (pose.blink < 0.6) {
+      if (pose.blink < 0.6 && scale.height > 0.5) {
         canvas.drawCircle(
           eye +
               Offset(
