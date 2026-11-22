@@ -384,6 +384,8 @@ In **Settings → Companion style → Bot**, **Shape** picks a **Green circle** 
 | Confused | One eye open and one squinting, glancing away | Tilts its head and sways slowly |
 | Happy | Smiling arches looking up | A few springy hops |
 
+The green circle is a deep jade: a mint highlight (`#7ADCC4`) shading to jade (`#14917D`) and a darker teal edge (`#0B5E54`) that gives it depth. The orange triangle keeps its two-colour gradient.
+
 Moods never change the body's colour. Sadness makes the same colour slightly duller and darker, and fear makes it a little paler.
 
 The eyes are white, so they would vanish on the doctor's coat. When a top is worn, both eyes move up together whenever they would come within 0.18 body radii of its neckline, such as when looking down while sad.

@@ -17,6 +17,10 @@ abstract class BotShape {
   Color get light;
   Color get dark;
 
+  /// The colour at the very edge, for depth. The same as [dark] unless a
+  /// shape sets a deeper one.
+  Color get edge => dark;
+
   /// Distance from the center down to the lowest point, where the feet are.
   double get bottom;
 
@@ -39,7 +43,7 @@ abstract class BotShape {
   Path outline(double radius);
 }
 
-/// The green circle.
+/// The green circle, in a deep jade.
 class BotCircle extends BotShape {
   const BotCircle();
 
@@ -49,9 +53,11 @@ class BotCircle extends BotShape {
   String get name => 'Green circle';
 
   @override
-  Color get light => const Color(0xFF80CBC4);
+  Color get light => const Color(0xFF7ADCC4);
   @override
-  Color get dark => const Color(0xFF00897B);
+  Color get dark => const Color(0xFF14917D);
+  @override
+  Color get edge => const Color(0xFF0B5E54);
 
   @override
   double get bottom => 1;

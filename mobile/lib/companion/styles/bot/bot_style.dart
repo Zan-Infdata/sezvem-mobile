@@ -151,7 +151,13 @@ class BotCompanionStyle extends CompanionStyle {
         ..shader = RadialGradient(
           center: const Alignment(-0.35, -0.45),
           radius: 0.8,
-          colors: [_shade(shape.light, pose.sad, scared), dark],
+          // A deeper edge colour, if the shape has one, adds depth.
+          colors: [
+            _shade(shape.light, pose.sad, scared),
+            dark,
+            if (shape.edge != shape.dark) _shade(shape.edge, pose.sad, scared),
+          ],
+          stops: shape.edge != shape.dark ? const [0, 0.72, 1] : null,
         ).createShader(outline.getBounds()),
     );
     final body = BotBody(
