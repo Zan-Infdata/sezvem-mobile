@@ -380,11 +380,13 @@ In **Settings → Companion style → Bot**, **Shape** picks a **Green circle** 
 | --- | --- | --- |
 | Surprised | Wide, round eyes looking straight out | Quick startled hop that stretches the body |
 | Laughing | Eyes squeezed into arches, head tilted back | About three small bounces a second with a side-to-side wobble |
-| Scared | Round, worried, slowly trembling eyes looking down, gaze darting | Shrinks, leans back, and turns a little paler |
+| Scared | Wide round eyes like surprise, trembling gently, glancing down and away | Shrinks, leans back, and turns a little paler |
 | Confused | One eye open and one squinting, glancing away | Tilts its head and sways slowly |
 | Happy | Smiling arches looking up | A few springy hops |
 
-Moods never change the body's colour. Sadness makes the same colour a little duller and darker, and fear makes it a little paler.
+Moods never change the body's colour. Sadness makes the same colour slightly duller and darker, and fear makes it a little paler.
+
+The eyes are white, so they would vanish on the doctor's coat. When a top is worn, both eyes move up together whenever they would come within 0.18 body radii of its neckline, such as when looking down while sad.
 
 `CompanionAnimator.emote` plays one emotion on top of the current mood and completes when it ends. It eases in over 0.18 s, holds, and eases out over 0.3 s. Durations range from 1.4 s for surprised to 2 s for confused. A new emotion replaces one that is playing. The pose carries the emotion, its strength, and the time since it started, so looping motions such as trembling stay smooth.
 

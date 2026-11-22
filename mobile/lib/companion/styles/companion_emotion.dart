@@ -97,8 +97,8 @@ Offset emotionEyeShake(CompanionPose pose, double side) {
   if (scared == 0) return Offset.zero;
   final time = 2 * math.pi * pose.emotionTime;
   return Offset(
-        math.sin(time * 6 + side * 1.3) * 0.035,
-        math.cos(time * 7.5 + side * 0.7) * 0.025,
+        math.sin(time * 6 + side * 1.3) * 0.015,
+        math.cos(time * 7.5 + side * 0.7) * 0.01,
       ) *
       scared;
 }

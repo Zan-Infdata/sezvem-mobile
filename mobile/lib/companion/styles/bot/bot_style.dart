@@ -35,6 +35,9 @@ class BotCompanionStyle extends CompanionStyle {
   /// Distance from the bottom of the window to the ground line.
   static const groundInset = 10.0;
 
+  /// Gap in body radii kept between the eyes and a top's neckline.
+  static const neckClearance = 0.18;
+
   /// Backflip jump height. Fits [CompanionStyle.backflipSize].
   static const jumpHeight = 52.0;
 
@@ -183,7 +186,7 @@ class BotCompanionStyle extends CompanionStyle {
     final dart =
         pose.amountOf(CompanionEmotion.scared) *
         math.sin(2 * math.pi * pose.emotionTime * 1.5) *
-        12;
+        5;
     return face.copyWith(
       yaw: (face.yaw + math.sin(phase) * 4 + dart) * direction,
       pitch: face.pitch + math.cos(phase) * 3,
@@ -197,10 +200,10 @@ class BotCompanionStyle extends CompanionStyle {
     final hsl = HSLColor.fromColor(color);
     return hsl
         .withSaturation(
-          (hsl.saturation * (1 - sad * 0.35 - scared * 0.3)).clamp(0.0, 1.0),
+          (hsl.saturation * (1 - sad * 0.15 - scared * 0.3)).clamp(0.0, 1.0),
         )
         .withLightness(
-          (hsl.lightness - sad * 0.06 + scared * 0.1).clamp(0.0, 1.0),
+          (hsl.lightness - sad * 0.02 + scared * 0.1).clamp(0.0, 1.0),
         )
         .toColor();
   }
@@ -224,7 +227,7 @@ class BotCompanionStyle extends CompanionStyle {
       down * math.cos(roll) - right * math.sin(roll),
     );
 
-    final eyes = Path();
+    var eyes = Path();
     for (final side in [-1.0, 1.0]) {
       final eye = side < 0 ? face.left : face.right;
       final split = _rad(face.split * side);
@@ -252,6 +255,13 @@ class BotCompanionStyle extends CompanionStyle {
         normal.y * reach + shake.dy,
       );
       eyes.addPath(eyePath.transform(onSphere), Offset.zero);
+    }
+    // White eyes vanish on a white coat, so a top pushes both eyes up
+    // together until they clear its neckline.
+    if (top is! NoAccessory) {
+      final limit = (shape.neckY - neckClearance) * radius;
+      final overlap = eyes.getBounds().bottom - limit;
+      if (overlap > 0) eyes = eyes.shift(Offset(0, -overlap));
     }
     return eyes;
   }
@@ -371,12 +381,12 @@ class _Face {
       pitch: 16,
       roll: 0,
     ),
-    // Big round worried eyes, looking down and away.
+    // Wide round eyes like surprise, glancing down and away.
     CompanionEmotion.scared => const _Face.both(
-      _Eye(0.45, 0.5, tilt: -10),
+      _Eye(0.45, 0.47),
       split: 20.5,
       yaw: -10,
-      pitch: -14,
+      pitch: -6,
       roll: 0,
     ),
     // One eye open, one squinting, glancing away with a tilt.
