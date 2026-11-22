@@ -86,6 +86,15 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
   /// Whether the backdrop and panel are faded in.
   bool _chatShown = false;
 
+  /// Whether the panel is built. It's added a frame after the head, so a slow
+  /// first build of the panel never hides the character.
+  bool _panelBuilt = false;
+
+  /// Draws nothing while the native window changes size. Android shows the
+  /// last frame stretched to the new window size until Flutter draws one at
+  /// that size, so hiding the content avoids a stretched character.
+  bool _resizing = false;
+
   static const _chatFade = Duration(milliseconds: 180);
 
   @override
@@ -133,13 +142,13 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
     final movement = _movement;
     if (movement == null || !mounted) return;
     final from = await _window.getLayout();
-    final expanded = await _window.expand();
+    await _hideWhile(_window.expand);
+    final expanded = await _window.getLayout();
     if (!mounted) return;
     final density = expanded.density;
     final chat = _chat ??= AssistantChat(
       widget.assistant ?? NativeAssistantEngine(),
     );
-    unawaited(chat.prepare());
     final closed = _chatClosed = Completer<void>();
     setState(() {
       _chatHead = Rect.fromLTWH(
@@ -149,19 +158,55 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
         from.height / density,
       );
       _chatShown = false;
+      _panelBuilt = false;
+      _resizing = false;
     });
-    // Fade in from the next frame, so the expanded window first shows only
-    // the character where it already was.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _chatHead != null) setState(() => _chatShown = true);
-    });
+    // First show only the character where it already was, then build the
+    // panel, then fade it in.
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    setState(() => _panelBuilt = true);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    setState(() => _chatShown = true);
+    // Load the model after the panel has faded in. Loading keeps the CPU
+    // busy and would otherwise delay the frames that show the chat.
+    unawaited(Future<void>.delayed(_chatFade * 2, chat.prepare));
     await closed.future;
     if (!mounted) return;
     setState(() => _chatShown = false);
     await Future<void>.delayed(_chatFade);
     if (!mounted) return;
-    setState(() => _chatHead = null);
-    movement.updateLayout(await _window.collapse());
+    late CompanionWindowLayout collapsed;
+    await _hideWhile(() async => collapsed = await _window.collapse());
+    if (!mounted) return;
+    setState(() {
+      _chatHead = null;
+      _resizing = false;
+    });
+    movement.updateLayout(collapsed);
+  }
+
+  /// Hides the content, runs [resize], and waits until Flutter lays out at
+  /// the new window size. The caller shows the content again.
+  Future<void> _hideWhile(Future<Object?> Function() resize) async {
+    final view = View.of(context);
+    setState(() => _resizing = true);
+    await WidgetsBinding.instance.endOfFrame;
+    final layout = await resize();
+    if (layout is! CompanionWindowLayout) return;
+    final target = Size(layout.width, layout.height);
+    // Usually one or two frames. The limit covers platforms that never
+    // report the new size, such as widget tests.
+    for (var frame = 0; frame < 10 && mounted; frame++) {
+      final size = view.physicalSize;
+      if ((size.width - target.width).abs() < 2 &&
+          (size.height - target.height).abs() < 2) {
+        break;
+      }
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    if (mounted) await WidgetsBinding.instance.endOfFrame;
   }
 
   void _closeChat() {
@@ -220,7 +265,11 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       color: const Color(0x00000000),
-      home: _chatHead == null ? _buildCharacter() : _buildChat(),
+      home: _resizing
+          ? const SizedBox.expand()
+          : _chatHead == null
+          ? _buildCharacter()
+          : _buildChat(),
     );
   }
 
@@ -240,17 +289,18 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
             ),
           ),
         ),
-        Positioned(
-          left: 12,
-          right: 12,
-          top: head.bottom + 4,
-          bottom: 12 + keyboard,
-          child: AnimatedOpacity(
-            opacity: _chatShown ? 1 : 0,
-            duration: _chatFade,
-            child: CompanionChatPanel(chat: chat, onClose: _closeChat),
+        if (_panelBuilt)
+          Positioned(
+            left: 12,
+            right: 12,
+            top: head.bottom + 4,
+            bottom: 12 + keyboard,
+            child: AnimatedOpacity(
+              opacity: _chatShown ? 1 : 0,
+              duration: _chatFade,
+              child: CompanionChatPanel(chat: chat, onClose: _closeChat),
+            ),
           ),
-        ),
         Positioned.fromRect(
           rect: head,
           child: Semantics(

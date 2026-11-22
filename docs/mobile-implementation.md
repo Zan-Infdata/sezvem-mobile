@@ -340,6 +340,8 @@ Decisions:
 - The model runs in native Kotlin through LiteRT-LM 0.19.1 rather than a Flutter plugin. It's Google's supported runtime, it supports tool calling for the next step, and both Flutter engines can share one loaded model. The `flutter_gemma` plugin was discontinued in October 2026.
 - The model loads when the chat first opens. Loading takes several seconds, and the status line shows the time it took. The send button stays disabled until the model is ready.
 - Inference uses the CPU by default. To try the GPU, build with `--dart-define=ASSISTANT_BACKEND=gpu`. The manifest declares the optional OpenCL libraries LiteRT-LM needs for the GPU.
+- Android shows the overlay's last frame stretched to a new window size until Flutter draws one at that size. The overlay therefore draws nothing while the window expands or collapses, about 0.2 s, and waits until Flutter reports the new size. It then shows the character, builds the panel on the next frame, and fades the panel in. The model starts loading after the fade, because loading keeps the CPU busy and would delay those frames.
+- In a debug build, the first panel build takes about 0.7 s while the character waits at the top. Later openings are faster.
 - While the chat is open, the window is focusable so the keyboard can type into it, and it uses `SOFT_INPUT_ADJUST_RESIZE`. The panel also pads itself by the keyboard inset. Back is intercepted in the window's root view and closes the chat.
 - The system instruction asks for brief plain-text replies and to direct health concerns to the care team. Personalization and API tools come later.
 
