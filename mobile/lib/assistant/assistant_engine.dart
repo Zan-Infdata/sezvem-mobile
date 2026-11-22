@@ -82,13 +82,20 @@ class NativeAssistantEngine implements AssistantEngine {
       'ASSISTANT_BACKEND',
       defaultValue: 'cpu',
     ),
+    Future<String> Function()? loadSoul,
     MethodChannel? methods,
     EventChannel? events,
-  }) : _methods = methods ?? const MethodChannel('ixland/assistant'),
+  }) : _loadSoul = loadSoul ?? (() => rootBundle.loadString(soulAsset)),
+       _methods = methods ?? const MethodChannel('ixland/assistant'),
        _events = events ?? const EventChannel('ixland/assistant/events');
+
+  /// Who the assistant is and what it answers. Sent as the system instruction
+  /// when the model loads.
+  static const soulAsset = 'assets/soul.md';
 
   /// `cpu` or `gpu`. Set with `--dart-define=ASSISTANT_BACKEND=gpu`.
   final String backend;
+  final Future<String> Function() _loadSoul;
   final MethodChannel _methods;
   final EventChannel _events;
   Stream<Map<Object?, Object?>>? _replies;
@@ -103,6 +110,7 @@ class NativeAssistantEngine implements AssistantEngine {
   Future<AssistantState> load() async => AssistantState.fromMap(
     await _methods.invokeMapMethod<Object?, Object?>('load', {
       'backend': backend,
+      'systemInstruction': await _loadSoul(),
     }),
   );
 

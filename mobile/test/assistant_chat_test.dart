@@ -88,6 +88,12 @@ void main() {
     });
   });
 
+  test('soul.md is bundled and sets the refusal sentence', () async {
+    final soul = await rootBundle.loadString(NativeAssistantEngine.soulAsset);
+    expect(soul, contains('medical help assistant'));
+    expect(soul, contains("I don't know, I only know medicine."));
+  });
+
   group('NativeAssistantEngine', () {
     const methods = MethodChannel('test/assistant');
     const events = EventChannel('test/assistant/events');
@@ -130,12 +136,19 @@ void main() {
       messenger.setMockStreamHandler(events, null);
     });
 
-    NativeAssistantEngine create() =>
-        NativeAssistantEngine(backend: 'gpu', methods: methods, events: events);
+    NativeAssistantEngine create() => NativeAssistantEngine(
+      backend: 'gpu',
+      loadSoul: () async => 'Only medicine.',
+      methods: methods,
+      events: events,
+    );
 
     test('load passes the backend and reads the status', () async {
       final state = await create().load();
-      expect(calls.single.arguments, {'backend': 'gpu'});
+      expect(calls.single.arguments, {
+        'backend': 'gpu',
+        'systemInstruction': 'Only medicine.',
+      });
       expect(state.status, AssistantStatus.ready);
       expect(state.backend, 'gpu');
       expect(state.loadTime, const Duration(milliseconds: 2500));

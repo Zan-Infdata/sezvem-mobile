@@ -31,10 +31,10 @@ internal object AssistantEngine {
     const val MODEL_FILE = "gemma-4-E2B-it.litertlm"
 
     private const val TAG = "AssistantEngine"
-    private const val SYSTEM_INSTRUCTION =
-        "You are the IXLand companion, a friendly character that lives on the patient's phone " +
-            "screen. Reply briefly and warmly in plain text without Markdown. You can't give " +
-            "medical advice. For health concerns, suggest contacting the care team."
+    /** Used only if Flutter sends no instruction. The real one is `mobile/assets/soul.md`. */
+    private const val FALLBACK_INSTRUCTION =
+        "You are the IXLand companion, a medical help assistant. Only answer questions about " +
+            "health and medicine. For anything else, reply exactly: I don't know, I only know medicine."
 
     private val worker = Executors.newSingleThreadExecutor { Thread(it, "assistant-engine") }
     private val main = Handler(Looper.getMainLooper())
@@ -42,6 +42,7 @@ internal object AssistantEngine {
     // Read and written on the worker thread only.
     private var engine: Engine? = null
     private var conversation: Conversation? = null
+    private var instruction = FALLBACK_INSTRUCTION
 
     // Read on any thread, written on the worker or main thread.
     @Volatile private var state = "unloaded"
@@ -73,10 +74,27 @@ internal object AssistantEngine {
         )
     }
 
-    /** Loads the model if needed and reports the resulting status. */
-    fun load(context: Context, backend: String, done: (Map<String, Any?>) -> Unit) {
+    /**
+     * Loads the model if needed and reports the resulting status. [systemInstruction] sets who the
+     * assistant is. If it differs from the loaded conversation's, the conversation starts over.
+     */
+    fun load(
+        context: Context,
+        backend: String,
+        systemInstruction: String?,
+        done: (Map<String, Any?>) -> Unit,
+    ) {
         val app = context.applicationContext
         worker.execute {
+            val wanted = systemInstruction?.takeIf { it.isNotBlank() } ?: FALLBACK_INSTRUCTION
+            if (wanted != instruction) {
+                instruction = wanted
+                val loaded = engine
+                if (loaded != null && !replying) {
+                    conversation?.close()
+                    conversation = loaded.createConversation(conversationConfig())
+                }
+            }
             if (engine == null) {
                 val file = modelFile(app)
                 if (!file.exists()) {
@@ -201,7 +219,7 @@ internal object AssistantEngine {
     }
 
     private fun conversationConfig() =
-        ConversationConfig(systemInstruction = Contents.of(SYSTEM_INSTRUCTION))
+        ConversationConfig(systemInstruction = Contents.of(instruction))
 
     private fun textOf(message: Message): String =
         message.contents.contents.filterIsInstance<Content.Text>().joinToString("") { it.text }

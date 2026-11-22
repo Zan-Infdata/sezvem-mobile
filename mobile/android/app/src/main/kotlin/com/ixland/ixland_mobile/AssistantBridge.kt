@@ -36,6 +36,7 @@ internal class AssistantBridge(context: Context, messenger: BinaryMessenger) {
                 "load" -> AssistantEngine.load(
                     context,
                     call.argument<String>("backend") ?: "cpu",
+                    call.argument<String>("systemInstruction"),
                 ) { result.success(it) }
                 "send" -> {
                     val id = call.argument<Number>("id")?.toInt()
