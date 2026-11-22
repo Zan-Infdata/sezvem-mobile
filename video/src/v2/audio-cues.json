@@ -1,0 +1,8 @@
+{
+  "_comment": "Fixed beats the music is scored to, in frames local to each scene. Scene agents must honour them.",
+  "urgent": 230,
+  "pause": 45,
+  "logo": 45,
+  "close": 215,
+  "close_len": 30
+}

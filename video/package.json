@@ -1,0 +1,23 @@
+{
+  "name": "sezvem-kevin-video",
+  "private": true,
+  "scripts": {
+    "studio": "remotion studio",
+    "audio": "python3 scripts/make_audio.py",
+    "render": "remotion render SezvemPromo out/sezvem-kevin.mp4",
+    "render:v2": "npm run audio && remotion render SezvemPromoV2 out/sezvem-kevin-v2.mp4 --codec=h264 --audio-codec=aac"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.545",
+    "@remotion/google-fonts": "^4.0.545",
+    "@remotion/media": "^4.0.545",
+    "@remotion/transitions": "^4.0.545",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "remotion": "4.0.545"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.8",
+    "typescript": "5.8.3"
+  }
+}

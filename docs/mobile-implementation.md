@@ -427,3 +427,14 @@ Run `flutter test test/assistant_chat_test.dart test/companion_test.dart test/de
 On a transition to `output.status: emergency`, the app summons the companion if needed, closes any check-in, and immediately shows a fixed message asking the patient to contact their medical team because the monitoring results indicate a risk of complications. The alert works independently of Gemma and takes priority while any state remains at `emergency`. Pending lower-priority alerts and check-ins can resume when the emergency clears. Identical snapshots leave the alert acknowledged. Swiping the companion away re-arms the alert while the state is in emergency.
 
 From `mobile/`, run `flutter test test/companion_test.dart test/telemetry_api_test.dart`. On Android, grant overlay access and use a synthetic patient whose monitoring response changes from `critical` to `emergency`, first with the companion hidden and again while a check-in is open. Verify that the care-team message appears in both cases. The live schema currently lists `critical` as the highest documented status for declarative models, so the fixture must emit `emergency` explicitly. [Deployed OpenAPI schema](https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/openapi.json)
+
+## Promo video (Remotion)
+
+`video/` is a Remotion project for the ŠEzVEM promo video featuring Kevin. It is separate from the Flutter app. Kevin is redrawn as SVG from the Bot companion painter in `mobile/lib/companion/styles/bot/`, keeping the same shapes, colours, coat, eye model and faces.
+
+- `SezvemPromo` is the 59.5 s cut without sound. `SezvemPromoV2` is the 74.7 s cut with a synthesized soundtrack, cross-dissolves and a film finish.
+- Reusable parts live in `video/src/components/`: Kevin, the virtual camera, the phone, chat, heart-rate monitor, logo and circle close. `video/src/scenes/CompanionChat.tsx` drives every Kevin conversation from a script, and its sounds follow that script automatically.
+- The v2 scene lengths are in `video/src/v2/timeline.json`. The music is scored to that file and to the fixed cue frames in `video/src/v2/audio-cues.json`. Each v2 scene is a file in `video/src/v2/scenes/` and also registered as a `V2-<scene>` preview composition.
+- Rendered MP4s are committed in `video/out/`. The audio in `video/public/audio/` is generated, not committed.
+
+From `video/`, run `npm install`, then `npm run studio` to preview. `npm run render:v2` regenerates the audio (needs Python with numpy and scipy) and renders the v2 MP4. `npx tsc -p .` typechecks the project.

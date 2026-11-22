@@ -1,0 +1,18 @@
+{
+  "fps": 30,
+  "transition": 15,
+  "scenes": [
+    { "id": "intro", "duration": 220, "music": "intro" },
+    { "id": "pairing", "duration": 225, "music": "app" },
+    { "id": "monitor", "duration": 135, "music": "app" },
+    { "id": "irregular", "duration": 60, "music": "tension" },
+    { "id": "rise", "duration": 200, "music": "tension" },
+    { "id": "detect", "duration": 285, "music": "alert" },
+    { "id": "critical", "duration": 315, "music": "alert" },
+    { "id": "goodCard", "duration": 60, "music": "warm" },
+    { "id": "good", "duration": 345, "music": "warm" },
+    { "id": "philosophy", "duration": 135, "music": "swell" },
+    { "id": "customize", "duration": 175, "music": "playful" },
+    { "id": "finale", "duration": 250, "music": "finale" }
+  ]
+}
