@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'app_names.dart';
 import 'companion/companion_overlay_app.dart';
 import 'devices/connected_devices_screen.dart';
 import 'settings/patient_settings.dart';
@@ -63,7 +64,7 @@ class IxlandApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'IXLand',
+      title: appName,
       home: LoginScreen(
         adapters: adapters,
         patientSettings: patientSettings,
@@ -98,20 +99,27 @@ class LoginScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Sign in')),
       body: Center(
-        child: FilledButton(
-          onPressed: () {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute<void>(
-                builder: (_) => ConnectedDevicesScreen(
-                  adapters: adapters,
-                  batchInterval: batchInterval,
-                  patientSettings: patientSettings,
-                  telemetryApi: telemetryApi,
-                ),
-              ),
-            );
-          },
-          child: const Text('Continue'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(appName, style: Theme.of(context).textTheme.headlineMedium),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ConnectedDevicesScreen(
+                      adapters: adapters,
+                      batchInterval: batchInterval,
+                      patientSettings: patientSettings,
+                      telemetryApi: telemetryApi,
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Continue'),
+            ),
+          ],
         ),
       ),
     );

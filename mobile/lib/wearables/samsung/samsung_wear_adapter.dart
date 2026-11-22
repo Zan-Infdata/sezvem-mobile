@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 
+import '../../app_names.dart';
 import '../wearable_adapter.dart';
 
 final class SamsungWearAdapter implements WearableAdapter {
@@ -11,7 +12,7 @@ final class SamsungWearAdapter implements WearableAdapter {
   @override
   List<String> get setupSteps => const [
     'Pair your Galaxy Watch with this phone in Galaxy Wearable.',
-    'Install and open IXLand Watch on your watch.',
+    'Install and open $watchAppName on your watch.',
     'Tap Scan for Samsung Galaxy Watch here and select your watch.',
     'On the watch, tap Start and allow heart-rate and physical activity access. Keep the watch app open to stream readings.',
   ];
@@ -54,7 +55,7 @@ final class SamsungWearAdapter implements WearableAdapter {
       }
     } on PlatformException {
       throw const WearableException(
-        'Could not receive readings. Open IXLand Watch and reconnect.',
+        'Could not receive readings. Open $watchAppName and reconnect.',
       );
     }
   }

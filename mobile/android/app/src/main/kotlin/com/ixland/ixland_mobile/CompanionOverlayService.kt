@@ -131,7 +131,7 @@ class CompanionOverlayService : Service() {
         this.channel = channel
         this.assistant = AssistantBridge(this, engine.dartExecutor.binaryMessenger) { _ ->
             if (checkInActive) {
-                showAlert("Check-in preview", "The assistant prepared your check-in report on this phone.")
+                showAlert("Check-in preview", "${getString(R.string.companion_name)} prepared your check-in report on this phone.")
             }
         }
         this.view = view
@@ -445,11 +445,12 @@ class CompanionOverlayService : Service() {
 
     private fun startInForeground() {
         val notifications = getSystemService(NotificationManager::class.java)
+        val companionName = getString(R.string.companion_name)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             notifications.createNotificationChannel(
                 NotificationChannel(
                     NOTIFICATION_CHANNEL,
-                    "Companion",
+                    companionName,
                     NotificationManager.IMPORTANCE_LOW,
                 ).apply { description = "Shown while the companion can appear over other apps." },
             )
@@ -471,8 +472,8 @@ class CompanionOverlayService : Service() {
         }
         val notification = builder
             .setSmallIcon(R.drawable.ic_companion)
-            .setContentTitle("IXLand companion")
-            .setContentText("The companion can appear over other apps.")
+            .setContentTitle(companionName)
+            .setContentText("$companionName can appear over other apps.")
             .setOngoing(true)
             .setContentIntent(open)
             .addAction(Notification.Action.Builder(null, "Stop", stop).build())

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app_names.dart';
 import '../assistant/assistant_chat.dart';
 import '../assistant/assistant_engine.dart';
 
@@ -109,7 +110,7 @@ class _Header extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('IXLand companion', style: theme.textTheme.titleMedium),
+                Text(companionName, style: theme.textTheme.titleMedium),
                 Text(
                   _statusLine(chat.state),
                   style: theme.textTheme.bodySmall,
