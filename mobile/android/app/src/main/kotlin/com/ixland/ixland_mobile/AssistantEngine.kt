@@ -87,6 +87,8 @@ internal object AssistantEngine {
         val app = context.applicationContext
         worker.execute {
             val wanted = systemInstruction?.takeIf { it.isNotBlank() } ?: FALLBACK_INSTRUCTION
+            val source = if (wanted == FALLBACK_INSTRUCTION) "fallback" else "soul.md"
+            Log.i(TAG, "System instruction from $source, ${wanted.length} characters")
             if (wanted != instruction) {
                 instruction = wanted
                 val loaded = engine
