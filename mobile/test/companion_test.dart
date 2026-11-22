@@ -103,13 +103,13 @@ void main() {
     });
   });
 
-  group('TEST button', () {
+  group('Show KEVIN button', () {
     testWidgets('shows the companion and minimizes the app', (tester) async {
       final companion = _FakeCompanionOverlay(granted: true);
       await tester.pumpWidget(_devicesScreen(companion));
 
       expect(find.text('Add device'), findsOneWidget);
-      await tester.tap(find.text('TEST'));
+      await tester.tap(find.text('Show KEVIN'));
       await tester.pump();
 
       expect(companion.calls, ['hasPermission', 'show', 'minimizeApp']);
@@ -121,14 +121,12 @@ void main() {
       final companion = _FakeCompanionOverlay(granted: false);
       await tester.pumpWidget(_devicesScreen(companion));
 
-      await tester.tap(find.text('TEST'));
+      await tester.tap(find.text('Show KEVIN'));
       await tester.pump();
 
       expect(companion.calls, ['hasPermission', 'requestPermission']);
       expect(
-        find.text(
-          'Allow IXLand to display over other apps to test the companion.',
-        ),
+        find.text('Allow ŠEzVEM to display over other apps to show KEVIN.'),
         findsOneWidget,
       );
     });
@@ -657,7 +655,7 @@ void main() {
       await pumpFor(tester, const Duration(seconds: 1));
       expect((native.calls('expand').length, native.lastMoveY), (1, 8.0));
       expect(assistant.loads, 1);
-      expect(find.text('IXLand companion'), findsOneWidget);
+      expect(find.text('KEVIN'), findsOneWidget);
       expect(find.textContaining('Gemma 4 E2B on CPU'), findsOneWidget);
       // The head slides up past the window edge to leave room for the panel.
       // It started 8 px from the top of the expanded window.
@@ -688,7 +686,7 @@ void main() {
       await tester.tap(find.byTooltip('Close chat'));
       await pumpFor(tester, const Duration(milliseconds: 300));
       expect(native.calls('collapse'), hasLength(1));
-      expect(find.text('IXLand companion'), findsNothing);
+      expect(find.text('KEVIN'), findsNothing);
       // Then it hurries back to where it was.
       await pumpFor(tester, const Duration(seconds: 1));
       expect((native.x, native.y, native.width), (880.0, 1000.0, 192.0));

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app_names.dart';
 import '../companion/companion_monitoring.dart';
 import '../companion/companion_overlay.dart';
 import '../companion/companion_wander_test.dart';
@@ -188,7 +189,7 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
         );
   }
 
-  Future<void> _testCompanion() async {
+  Future<void> _showCompanion() async {
     final companion = widget.companion;
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -200,7 +201,7 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
         messenger.showSnackBar(
           const SnackBar(
             content: Text(
-              'Allow IXLand to display over other apps to test the companion.',
+              'Allow $appName to display over other apps to show $companionName.',
             ),
           ),
         );
@@ -215,7 +216,7 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
     } on PlatformException {
       if (!mounted) return;
       messenger.showSnackBar(
-        const SnackBar(content: Text('Could not show the companion.')),
+        const SnackBar(content: Text('Could not show $companionName.')),
       );
     }
   }
@@ -270,7 +271,17 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
           );
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Connected devices'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(appName),
+            Text(
+              'Connected devices',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Settings',
@@ -350,9 +361,9 @@ class _ConnectedDevicesScreenState extends State<ConnectedDevicesScreen> {
           ],
           FloatingActionButton.extended(
             heroTag: 'test_companion',
-            onPressed: _testCompanion,
+            onPressed: _showCompanion,
             icon: const Icon(Icons.pets),
-            label: const Text('TEST'),
+            label: const Text('Show $companionName'),
           ),
         ],
       ),

@@ -23,10 +23,12 @@ void main() {
       ),
     );
     expect(find.text('Sign in'), findsOneWidget);
+    expect(find.text('ŠEzVEM'), findsOneWidget);
 
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
     expect(find.text('Connected devices'), findsOneWidget);
+    expect(find.text('ŠEzVEM'), findsOneWidget);
     expect(find.text('No connected devices'), findsOneWidget);
 
     await tester.tap(find.text('Add device'));

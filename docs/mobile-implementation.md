@@ -4,8 +4,8 @@
 
 1. **Sign in** opens first. Continue takes the user straight to Connected devices. The placeholder accepts no credentials and makes no network request. Replacing the sign-in route keeps it out of the back stack after Continue.
 2. **Connected devices** starts empty. **Add device** loads WHOOP and Samsung Galaxy Watch from the bundled provider catalog.
-3. Select **WHOOP** and follow the numbered setup steps. Wake the WHOOP 4.0 with its charged battery pack and look for the flashing blue LED. In IXLand, tap **Scan for WHOOP**, grant Bluetooth access if prompted, and select your strap. Accept any Android pairing prompt and wear the strap. The app supports one active connection and shows the latest heart rate and sample count. Disconnect stops collection from the strap.
-4. For **Samsung Galaxy Watch**, pair the watch with the phone through Galaxy Wearable and open **IXLand Watch**. On the phone select **Add device → Samsung Galaxy Watch**, scan, and select the watch. On the watch tap **Start**, grant heart-rate permission, and wear the watch. The phone shows BPM and the batch sample count as readings arrive. Tap **Stop** on the watch to end measurement.
+3. Select **WHOOP** and follow the numbered setup steps. Wake the WHOOP 4.0 with its charged battery pack and look for the flashing blue LED. In ŠEzVEM, tap **Scan for WHOOP**, grant Bluetooth access if prompted, and select your strap. Accept any Android pairing prompt and wear the strap. The app supports one active connection and shows the latest heart rate and sample count. Disconnect stops collection from the strap.
+4. For **Samsung Galaxy Watch**, pair the watch with the phone through Galaxy Wearable and open **ŠEzVEM Watch**. On the phone select **Add device → Samsung Galaxy Watch**, scan, and select the watch. On the watch tap **Start**, grant heart-rate permission, and wear the watch. The phone shows BPM and the batch sample count as readings arrive. Tap **Stop** on the watch to end measurement.
 
 ## Files and decisions
 
@@ -20,14 +20,14 @@
 | `mobile/lib/wearables/wearable_adapter.dart` | Provider-independent scan and connection interface and live heart-rate events. |
 | `mobile/lib/wearables/whoop/whoop_ble_adapter.dart` | WHOOP discovery, Android pairing trigger, and live heart-rate subscriptions. |
 | `mobile/lib/wearables/whoop/whoop4_protocol.dart` | WHOOP 4.0 command frames and reassembly and checksum validation for live heart-rate notifications. |
-| `mobile/lib/wearables/samsung/samsung_wear_adapter.dart` | Discovers nearby IXLand Watch nodes and emits the common wearable events. |
+| `mobile/lib/wearables/samsung/samsung_wear_adapter.dart` | Discovers nearby ŠEzVEM Watch nodes and emits the common wearable events. |
 | `mobile/android/app/src/main/kotlin/com/ixland/ixland_mobile/WearBridge.kt` | Exposes Wear OS discovery and messages from the selected watch node through Flutter channels. |
 | `mobile/android/wear/` | Separate Wear OS app module with the watch sensor permission and Start and Stop screen. |
 | `mobile/lib/wearables/metric_batch_buffer.dart` | Provider-independent measurement windows and collection. |
 
 To add a provider, implement `WearableAdapter` in its own folder. Supply its setup steps and handle discovery, connection, and parsing there, then emit the common events. Register the adapter by the stable ID in `main.dart` and add a matching catalog entry. The provider picker enables entries that have a registered adapter. Batch windowing stays shared.
 
-Use plain Material widgets and Flutter navigation. Android is the first scaffolded platform, with the application ID `com.ixland.ixland_mobile` and launcher name IXLand. The catalog stores display metadata and ships with the app. Keep IDs unique across entries.
+Use plain Material widgets and Flutter navigation. Android is the first scaffolded platform, with the application ID `com.ixland.ixland_mobile` and launcher name ŠEzVEM. The catalog stores display metadata and ships with the app. Keep IDs unique across entries.
 
 ```json
 [
@@ -47,10 +47,10 @@ Use plain Material widgets and Flutter navigation. Android is the first scaffold
 ## Galaxy Watch4 companion
 
 - The watch app reads BPM from Wear OS Health Services while the user keeps the measurement screen open. It stops when the user taps Stop or leaves the screen. The watch asks for heart-rate access on first use. [Watch4 Health Services support](https://developer.samsung.com/health/blog/en/2022/01/14/using-health-services-on-galaxy-watch) · [Wear OS spot measurement](https://developer.android.com/health-and-fitness/health-services/active-data/measure-client)
-- The watch and phone advertise separate Data Layer capabilities. The watch sends positive BPM readings to a nearby IXLand phone. The phone listens only to messages from the selected watch. The Samsung adapter timestamps incoming BPM in UTC and feeds the same in-memory batch buffer as WHOOP. This flow runs through Wear OS Data Layer and uses its best-effort live messaging. [Wear OS capabilities](https://developer.android.com/training/wearables/data/discover-devices) · [Data Layer message delivery](https://developer.android.com/training/wearables/data/client-types)
+- The watch and phone advertise separate Data Layer capabilities. The watch sends positive BPM readings to a nearby phone running ŠEzVEM. The phone listens only to messages from the selected watch. The Samsung adapter timestamps incoming BPM in UTC and feeds the same in-memory batch buffer as WHOOP. This flow runs through Wear OS Data Layer and uses its best-effort live messaging. [Wear OS capabilities](https://developer.android.com/training/wearables/data/discover-devices) · [Data Layer message delivery](https://developer.android.com/training/wearables/data/client-types)
 - Build the phone and watch APKs with matching package names and signing keys. Their package is `com.ixland.ixland_mobile`. The watch build has a distinct launcher and requires Wear OS 3 or higher. [Wear OS Data Layer requirements](https://developer.android.com/training/wearables/data/overview)
 
-### Build and install IXLand Watch
+### Build and install the watch app
 
 From the project root, build the watch module and target the Watch4 serial listed by ADB. Replace `WATCH_SERIAL` with the serial or Wi-Fi connection address. [Wear OS Wi-Fi debugging](https://developer.android.com/training/wearables/get-started/debug-wifi)
 
@@ -61,7 +61,7 @@ adb devices -l
 adb -s WATCH_SERIAL install -r ../build/wear/outputs/apk/debug/wear-debug.apk
 ```
 
-The APK is generated at `mobile/build/wear/outputs/apk/debug/wear-debug.apk`. Open **IXLand Watch** from the watch's app list. Use the current phone APK for its Samsung provider.
+The APK is generated at `mobile/build/wear/outputs/apk/debug/wear-debug.apk`. Open **ŠEzVEM Watch** from the watch's app list. Use the current phone APK for its Samsung provider.
 
 ## Run and verify the phone app
 
@@ -109,11 +109,11 @@ After the first JSON preview appears, check **Debug jam** below it to simulate a
 
 The companion is a small animated character that appears over other Android apps. This version is a manual test with placeholder art and six test actions.
 
-1. On **Connected devices**, tap **TEST** below **Add device**. The first time, Android opens **Display over other apps** for IXLand. Turn it on and go back. If access stays off, the app explains why it can't continue.
-2. IXLand moves to the background. The companion walks in from the right edge and rests near the right side of the screen, over whatever app is visible. The app underneath stays usable outside the character.
+1. On **Connected devices**, tap **Show KEVIN** below **Add device**. The first time, Android opens **Display over other apps** for ŠEzVEM. Turn it on and go back. If access stays off, the app explains why it can't continue.
+2. ŠEzVEM moves to the background. The companion walks in from the right edge and rests near the right side of the screen, over whatever app is visible. The app underneath stays usable outside the character.
 3. Interact with the companion. It runs one action at a time and ignores other input until the current action ends.
 4. Choose the companion's look on **Connected devices** → **Settings** → **Companion style**. Each style shows an animated preview. **Bot** is the only style. Its **Shape**, **Hat**, and **Top** pickers appear below the list, each option shown on the companion. A visible companion switches right away, and the choices are kept after a restart.
-5. While the companion is visible and IXLand is in the background, it walks to a random point every 4 to 8 seconds. A notification stays visible while the companion service runs. Its **Stop** action removes the companion. See [Monitoring state alerts](#monitoring-state-alerts) for when a state brings the companion onto the screen.
+5. While the companion is visible and ŠEzVEM is in the background, it walks to a random point every 4 to 8 seconds. A notification stays visible while the companion service runs. Its **Stop** action removes the companion. See [Monitoring state alerts](#monitoring-state-alerts) for when a state brings the companion onto the screen.
 
 | Input | Test action |
 | --- | --- |
@@ -195,9 +195,9 @@ To add a shape, extend `BotShape` with an outline, colours, its distance to the 
 - The chosen look is saved natively in `SharedPreferences` instead of through a Flutter plugin, because the overlay engine doesn't register plugins. It stores the style ID and the slot choices as a JSON string. The main app writes it through `CompanionBridge`, and the overlay reads it on start. When the look changes while the companion is showing, the service tells the overlay to switch. Unknown or missing styles fall back to the first style, and unknown options keep the default. Bad saved data gives the default look.
 - Swipes use the larger axis of the fling velocity, or of the drag distance for a slow drag. Holding still for Flutter's long-press delay starts the hold action.
 - The inflating sound is generated in the service as rushing air under a rising tone and played with `AudioTrack`, so no audio package or sound file is needed. It plays as a sonification sound, stops when the character reaches its limit or the finger lifts, and is skipped if audio can't start. [AudioTrack](https://developer.android.com/reference/android/media/AudioTrack)
-- The companion service runs as a foreground service with an ongoing notification. Without it, Android freezes or stops a backgrounded app, so the app couldn't move the companion. It is declared with the `specialUse` type and a stated reason, because no other type covers an on-screen companion. Google Play reviews that reason before release. The notification opens IXLand, and its **Stop** action ends the service. On Android 13 and later, the notification only shows in the drawer if notification access is allowed. The service still runs either way. [Foreground service types](https://developer.android.com/develop/background-work/services/fg-service-types#special-use) · [Foreground service notifications](https://developer.android.com/develop/ui/views/notifications/notification-permission#exemptions)
-- Swiping the companion away removes its window and engine but keeps the service running. If a monitored state remains abnormal, the app brings the companion back by calling the running service directly. Android can still refuse to start the service from the background, which applies to Android 15 and later unless the companion is already visible. The app reports that as `start_blocked` and pending monitoring alerts are retried on the next state fetch or when the app resumes. Tap **TEST** while IXLand is open to start the service. [Restrictions on starting from the background](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start)
-- The batch timer and monitoring cache run in the main app's Dart engine. If the user removes IXLand from recent apps, that engine ends while the companion service can stay visible.
+- The companion service runs as a foreground service with an ongoing notification. Without it, Android freezes or stops a backgrounded app, so the app couldn't move the companion. It is declared with the `specialUse` type and a stated reason, because no other type covers an on-screen companion. Google Play reviews that reason before release. The notification opens ŠEzVEM, and its **Stop** action ends the service. On Android 13 and later, the notification only shows in the drawer if notification access is allowed. The service still runs either way. [Foreground service types](https://developer.android.com/develop/background-work/services/fg-service-types#special-use) · [Foreground service notifications](https://developer.android.com/develop/ui/views/notifications/notification-permission#exemptions)
+- Swiping the companion away removes its window and engine but keeps the service running. If a monitored state remains abnormal, the app brings the companion back by calling the running service directly. Android can still refuse to start the service from the background, which applies to Android 15 and later unless the companion is already visible. The app reports that as `start_blocked` and pending monitoring alerts are retried on the next state fetch or when the app resumes. Tap **Show KEVIN** while ŠEzVEM is open to start the service. [Restrictions on starting from the background](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start)
+- The batch timer and monitoring cache run in the main app's Dart engine. If the user removes ŠEzVEM from recent apps, that engine ends while the companion service can stay visible.
 - Settings, AI-triggered appearances, a policy for when the companion may appear, and handling for access being revoked while it's visible aren't implemented yet.
 
 ### Verify the companion
@@ -212,7 +212,7 @@ flutter run
 
 `test/companion_test.dart` covers swipe classification in all four directions, the one-action-at-a-time rule, and the TEST button with granted and denied access. It also covers each test action with the window channel mocked: the alert on tap, walking off and closing on side swipes, the backflip's temporary resize, inputs blocked while sad, and the hold's sound, resize, and release. Inputs after closing are ignored. For styles, it covers the overlay drawing the saved style and Bot choices and switching when the look changes, and the settings picker opening from Connected devices, saving a style, customizing Dress-up, keeping Dress-up choices after switching style, and keeping the old style when saving fails. `test/companion_style_test.dart` also covers the Bot options, the triangle outline, applying choices, and saving and reading looks, including bad saved data. For app control, it covers the 0 to 1 coordinate mapping with padding and density, walking to a point the app sends, and declining a move while busy.
 
-On a physical Android phone, tap **TEST**, grant access, and check that the companion walks in over the home screen. Open another app and confirm you can tap and scroll around the character. Try each input from the table, and check that other inputs do nothing while an action runs, especially during the two sad seconds. Hold with the phone's sound on to hear the inflating sound. Check the backflip and inflation aren't clipped and the character doesn't jump when the window resizes. Rotate the phone while it's visible and check it stays on screen. Swipe the companion away with a normal cache and confirm it stays hidden. Use **Stop** in the notification and check the companion and the notification go away. Open **Settings** and check that **Bot** is selected and its preview animates. Try each shape, hat, and top, and check that the visible companion changes right away. Run each input with the top hat on and check that the hat stays inside the window.
+On a physical Android phone, tap **Show KEVIN**, grant access, and check that the companion walks in over the home screen. Open another app and confirm you can tap and scroll around the character. Try each input from the table, and check that other inputs do nothing while an action runs, especially during the two sad seconds. Hold with the phone's sound on to hear the inflating sound. Check the backflip and inflation aren't clipped and the character doesn't jump when the window resizes. Rotate the phone while it's visible and check it stays on screen. Swipe the companion away with a normal cache and confirm it stays hidden. Use **Stop** in the notification and check the companion and the notification go away. Open **Settings** and check that **Bot** is selected and its preview animates. Try each shape, hat, and top, and check that the visible companion changes right away. Run each input with the top hat on and check that the hat stays inside the window.
 
 Flutter analysis and all 274 tests passed, and the debug APK built. The companion hasn't been run on a device yet.
 
@@ -256,7 +256,7 @@ The Galaxy Watch4 lacks an infrared skin-temperature sensor. The WHOOP 4.0 heart
 
 The Wear OS companion subscribes to the Health Services `STEPS_DAILY` counter while a foreground measurement is running. It sends the reported count on `/ixland/steps/v1` when Health Services delivers it and alongside heart-rate updates so later batches can include the current count. Wear OS resets the counter at local midnight and controls when new readings arrive. The buffer sends the last reported count, including zero after a reset. Denying the watch's physical activity permission leaves heart-rate collection available. [Wear OS Health Services compatibility](https://developer.android.com/health-and-fitness/health-services/compatibility#passive-monitoring-client)
 
-Build and update both Android APKs, open **IXLand Watch**, tap **Start**, and grant physical activity access. With the phone connected to the watch in IXLand, take a few steps and compare successive `steps` values under **Batch JSON (debug)**. The Flutter tests cover translation of step messages, reset to zero, merged windows, missing temperature, and averaging and rounding of valid readings.
+Build and update both Android APKs, open **ŠEzVEM Watch**, tap **Start**, and grant physical activity access. With the phone connected to the watch in ŠEzVEM, take a few steps and compare successive `steps` values under **Batch JSON (debug)**. The Flutter tests cover translation of step messages, reset to zero, merged windows, missing temperature, and averaging and rounding of valid readings.
 
 ## Heart-rate sample timestamps
 
@@ -358,7 +358,7 @@ When `TelemetryApi` sends a batch, it concurrently calls `GET /patients/{patient
 
 Worsening raises all three flags. When the companion is visible, the app clears the summon flags and starts a check-in if the monitoring response has a prompt. A response without prompts uses one alert listing each addressed state and its status. A successful handoff clears the addressed flags. The raised `resolved` flag keeps the worse previous status on improvement and stays raised pending a resolution action. Swiping the companion away raises `addressed` again for every state with `resolved` set, including states that have returned to normal. The notification's **Stop** action stops the service. There is no timed summon.
 
-From `mobile/`, run `flutter test test/telemetry_api_test.dart test/companion_test.dart test/device_flow_test.dart`. The fixtures cover the per-patient GET, independent batch acknowledgment, prompt delivery, the combined alert, and swipe-triggered resummoning. On Android, grant overlay access through **TEST** and use a synthetic patient with multiple states. Return a previously abnormal state to normal, swipe the companion away, and verify that the companion returns while that state's `resolved` flag is set.
+From `mobile/`, run `flutter test test/telemetry_api_test.dart test/companion_test.dart test/device_flow_test.dart`. The fixtures cover the per-patient GET, independent batch acknowledgment, prompt delivery, the combined alert, and swipe-triggered resummoning. On Android, grant overlay access through **Show KEVIN** and use a synthetic patient with multiple states. Return a previously abnormal state to normal, swipe the companion away, and verify that the companion returns while that state's `resolved` flag is set.
 
 ## Companion soul
 
@@ -410,7 +410,7 @@ Decisions:
 - Bot draws with the canvas and `Path.combine`, so it needs no assets or packages.
 - Surprised, confused, and happy have no gesture yet. Monitoring alerts or the assistant could call `emote` next. The main app would need a channel call like `moveTo` to request one.
 
-To verify, run `flutter analyze` and `flutter test` from `mobile/`. `test/companion_style_test.dart` draws every emotion for every style variant across two seconds. `test/companion_emotion_test.dart` covers easing and replacement, and `test/companion_test.dart` covers the three gestures. On a phone, install the app, open **Settings**, check that **Bot** is selected or select it, and tap **TEST**. While the companion stands still, swipe up for scared, swipe down for laughing, and hold for sad. It ignores gestures while walking. Switch **Shape** to the triangle and repeat.
+To verify, run `flutter analyze` and `flutter test` from `mobile/`. `test/companion_style_test.dart` draws every emotion for every style variant across two seconds. `test/companion_emotion_test.dart` covers easing and replacement, and `test/companion_test.dart` covers the three gestures. On a phone, install the app, open **Settings**, check that **Bot** is selected or select it, and tap **Show KEVIN**. While the companion stands still, swipe up for scared, swipe down for laughing, and hold for sad. It ignores gestures while walking. Switch **Shape** to the triangle and repeat.
 
 ## Monitoring check-in with a system prompt and tool
 
@@ -427,3 +427,9 @@ Run `flutter test test/assistant_chat_test.dart test/companion_test.dart test/de
 On a transition to `output.status: emergency`, the app summons the companion if needed, closes any check-in, and immediately shows a fixed message asking the patient to contact their medical team because the monitoring results indicate a risk of complications. The alert works independently of Gemma and takes priority while any state remains at `emergency`. Pending lower-priority alerts and check-ins can resume when the emergency clears. Identical snapshots leave the alert acknowledged. Swiping the companion away re-arms the alert while the state is in emergency.
 
 From `mobile/`, run `flutter test test/companion_test.dart test/telemetry_api_test.dart`. On Android, grant overlay access and use a synthetic patient whose monitoring response changes from `critical` to `emergency`, first with the companion hidden and again while a check-in is open. Verify that the care-team message appears in both cases. The live schema currently lists `critical` as the highest documented status for declarative models, so the fixture must emit `emergency` explicitly. [Deployed OpenAPI schema](https://europe-west3-pati-api-8fac6.cloudfunctions.net/api/openapi.json)
+
+## ŠEzVEM and KEVIN display names
+
+The phone displays **ŠEzVEM** in the launcher and on the **Sign in** and **Connected devices** screens. **Show KEVIN** opens the companion overlay. The chat header, Android notification, and assistant instructions identify the companion as **KEVIN**. The watch launcher shows **ŠEzVEM Watch**. Both APKs use `com.ixland.ixland_mobile` for Android updates, watch pairing, and the existing model path.
+
+From `mobile/`, run `flutter analyze`, `flutter test`, and `flutter build apk --debug --target-platform android-arm,android-arm64,android-x64`. From `mobile/android/`, run `./gradlew :wear:assembleDebug`. The builds write the phone and watch APKs to their usual debug output paths. Verify their launcher labels and check that **Show KEVIN** opens a chat titled **KEVIN**.

@@ -99,7 +99,7 @@ class WatchActivity : Activity() {
             gravity = Gravity.CENTER
         }
         phoneStatus = TextView(this).apply {
-            text = "Finding IXLand on phone…"
+            text = "Finding ŠEzVEM on phone…"
             gravity = Gravity.CENTER
         }
         toggle = Button(this).apply {
@@ -137,7 +137,7 @@ class WatchActivity : Activity() {
     private fun updatePhone(capability: CapabilityInfo) {
         if (!visible) return
         phoneId = capability.nodes.filter { it.isNearby }.minByOrNull { it.id }?.id
-        phoneStatus.text = if (phoneId == null) "Open IXLand on your paired phone" else "Phone available"
+        phoneStatus.text = if (phoneId == null) "Open ŠEzVEM on your paired phone" else "Phone available"
     }
 
     private fun requestMeasurement() {

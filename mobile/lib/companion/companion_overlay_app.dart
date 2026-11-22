@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../app_names.dart';
 import '../assistant/assistant_chat.dart';
 import '../assistant/assistant_engine.dart';
 import 'companion_actions.dart';
@@ -369,7 +370,7 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
           rect: head,
           child: Semantics(
             button: true,
-            label: 'IXLand companion. Tap to close the chat.',
+            label: '$companionName. Tap to close the chat.',
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _closeChat,
@@ -404,7 +405,7 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
       child: Semantics(
         button: true,
         label:
-            'IXLand companion. Tap to chat. Hold or swipe in any direction to interact.',
+            '$companionName. Tap to chat. Hold or swipe in any direction to interact.',
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => _actions?.handle(CompanionInput.tap),
