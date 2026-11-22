@@ -97,6 +97,16 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
 
   static const _chatFade = Duration(milliseconds: 180);
 
+  /// The empty part above the character, as a share of its box. While the
+  /// chat is open, the head slides up by this much so the panel gets the room.
+  static const _headLift = 0.38;
+
+  /// Where the character and its shadow end, as a share of its box.
+  static const _headBottom = 0.94;
+
+  /// Head size while the keyboard is open, as a share of its normal size.
+  static const _keyboardHeadScale = 0.6;
+
   @override
   void initState() {
     super.initState();
@@ -275,8 +285,8 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
 
   Widget _buildChat() {
     final chat = _chat!;
-    final head = _chatHead!;
     final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final head = _headRect(_chatHead!, keyboardOpen: keyboard > 0);
     return Stack(
       children: [
         Positioned.fill(
@@ -290,18 +300,22 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
           ),
         ),
         if (_panelBuilt)
-          Positioned(
+          AnimatedPositioned(
+            duration: _chatFade,
+            curve: Curves.easeOut,
             left: 12,
             right: 12,
-            top: head.bottom + 4,
-            bottom: 12 + keyboard,
+            top: head.top + head.height * _headBottom + 4,
+            bottom: (keyboard > 0 ? 8 : 12) + keyboard,
             child: AnimatedOpacity(
               opacity: _chatShown ? 1 : 0,
               duration: _chatFade,
               child: CompanionChatPanel(chat: chat, onClose: _closeChat),
             ),
           ),
-        Positioned.fromRect(
+        AnimatedPositioned.fromRect(
+          duration: _chatFade,
+          curve: Curves.easeOut,
           rect: head,
           child: Semantics(
             button: true,
@@ -314,6 +328,23 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
           ),
         ),
       ],
+    );
+  }
+
+  /// Where the head goes while the chat is open. It starts at [from], where
+  /// the character already was, slides up while the panel fades in, and
+  /// shrinks into the corner while the keyboard is open. It returns to [from]
+  /// before the window collapses.
+  Rect _headRect(Rect from, {required bool keyboardOpen}) {
+    if (!_chatShown) return from;
+    final scale = keyboardOpen ? _keyboardHeadScale : 1.0;
+    final width = from.width * scale;
+    final height = from.height * scale;
+    return Rect.fromLTWH(
+      from.right - width,
+      from.top - height * _headLift,
+      width,
+      height,
     );
   }
 

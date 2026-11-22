@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ixland_mobile/assistant/assistant_engine.dart';
 import 'package:ixland_mobile/companion/companion_actions.dart';
 import 'package:ixland_mobile/companion/companion_character.dart';
+import 'package:ixland_mobile/companion/companion_chat_panel.dart';
 import 'package:ixland_mobile/companion/companion_animator.dart';
 import 'package:ixland_mobile/companion/companion_movement.dart';
 import 'package:ixland_mobile/companion/companion_overlay.dart';
@@ -465,6 +466,14 @@ void main() {
       expect(assistant.loads, 1);
       expect(find.text('IXLand companion'), findsOneWidget);
       expect(find.textContaining('Gemma 4 E2B on CPU'), findsOneWidget);
+      // The head slides up past the window edge to leave room for the panel.
+      // It started 8 px from the top of the expanded window.
+      final head = find.byType(CompanionCharacter);
+      expect(tester.getTopLeft(head).dy, lessThan(-60));
+      expect(
+        tester.getTopLeft(find.byType(CompanionChatPanel)).dy,
+        lessThan(200 - 8),
+      );
 
       // The main app can't move the companion while the chat is open.
       expect(await native.sendMove(tester, 0.1, 0.1), isFalse);
