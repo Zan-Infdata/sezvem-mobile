@@ -91,7 +91,7 @@ void main() {
   test('soul.md is bundled and sets the refusal sentence', () async {
     final soul = await rootBundle.loadString(NativeAssistantEngine.soulAsset);
     expect(soul, contains('medical help assistant'));
-    expect(soul, contains("I don't know, I only know medicine."));
+    expect(soul, contains("I don't know that, I'm a medical expert."));
   });
 
   group('NativeAssistantEngine', () {

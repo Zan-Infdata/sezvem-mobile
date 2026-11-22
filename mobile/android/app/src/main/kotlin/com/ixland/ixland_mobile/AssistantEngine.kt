@@ -34,7 +34,7 @@ internal object AssistantEngine {
     /** Used only if Flutter sends no instruction. The real one is `mobile/assets/soul.md`. */
     private const val FALLBACK_INSTRUCTION =
         "You are the IXLand companion, a medical help assistant. Only answer questions about " +
-            "health and medicine. For anything else, reply exactly: I don't know, I only know medicine."
+            "health and medicine. For anything else, reply exactly: I don't know that, I'm a medical expert."
 
     private val worker = Executors.newSingleThreadExecutor { Thread(it, "assistant-engine") }
     private val main = Handler(Looper.getMainLooper())

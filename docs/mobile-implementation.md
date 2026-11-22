@@ -355,7 +355,7 @@ From `mobile/`, run `flutter test test/telemetry_api_test.dart`. The loopback se
 
 ## Companion soul
 
-`mobile/assets/soul.md` defines who the companion is. It's a medical help assistant for a recently discharged patient. It answers only questions about health and medicine. For any other topic, it replies with exactly "I don't know, I only know medicine." It greets back briefly when greeted. It tells the patient to call emergency services first for symptoms that could be an emergency, and it sends treatment decisions, such as changing a medicine, to the care team. Replies are brief plain text in the patient's language.
+`mobile/assets/soul.md` defines who the companion is. It's a medical help assistant for a recently discharged patient. It answers only questions about health and medicine. For any other topic, it replies with exactly "I don't know that, I'm a medical expert." A few example exchanges in the file show the model when to refuse and when to answer. It greets back briefly when greeted. It tells the patient to call emergency services first for symptoms that could be an emergency, and it sends treatment decisions, such as changing a medicine, to the care team. Replies are brief plain text in the patient's language.
 
 The file is a Flutter asset, so edit it without touching code. It lives under `mobile/assets/` rather than `docs/` because the app reads it at runtime. `NativeAssistantEngine` reads it and sends it as `systemInstruction` with the `load` call. `AssistantEngine.kt` uses it as the LiteRT-LM system instruction. If the instruction changes while the model is loaded, the conversation starts over. A short fallback in `AssistantEngine.kt` applies only if no instruction arrives.
 
