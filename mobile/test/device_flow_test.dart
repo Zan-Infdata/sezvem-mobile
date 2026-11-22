@@ -204,6 +204,12 @@ void main() {
     await tester.tap(find.byTooltip('Settings'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
+    // The companion style pickers come first. Scroll to the patient ID.
+    await tester.scrollUntilVisible(
+      find.text('Create patient'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.text('Create patient'));
     await tester.pump();
     expect(patient.patientId, 'p-abcdef01');

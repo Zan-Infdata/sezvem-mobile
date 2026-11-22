@@ -112,7 +112,7 @@ The companion is a small animated character that appears over other Android apps
 1. On **Connected devices**, tap **TEST** below **Add device**. The first time, Android opens **Display over other apps** for IXLand. Turn it on and go back. If access stays off, the app explains why it can't continue.
 2. IXLand moves to the background. The companion walks in from the right edge and rests near the right side of the screen, over whatever app is visible. The app underneath stays usable outside the character.
 3. Interact with the companion. It runs one action at a time and ignores other input until the current action ends.
-4. Choose the companion's look on **Connected devices** → **Settings** → **Companion style**. Each style shows an animated preview. **Classic** is the original look. **Dress-up** adds **Base**, **Hat**, and **Top** pickers below the list, each option shown on the companion. A visible companion switches right away, and the choices are kept after a restart.
+4. Choose the companion's look on **Connected devices** → **Settings** → **Companion style**. Each style shows an animated preview. **Bot** is the only style. Its **Shape**, **Hat**, and **Top** pickers appear below the list, each option shown on the companion. A visible companion switches right away, and the choices are kept after a restart.
 5. While the companion is visible and IXLand is in the background, it walks to a random point every 4 to 8 seconds. A notification stays visible while the companion service runs. Its **Stop** action removes the companion. See [Monitoring state alerts](#monitoring-state-alerts) for when a state brings the companion onto the screen.
 
 | Input | Test action |
@@ -138,11 +138,9 @@ A short drag snaps back without triggering an action.
 | `mobile/lib/companion/companion_movement.dart` | Moves the window in a straight line at a set speed and converts 0 to 1 screen coordinates to window positions. Knows nothing about animation. |
 | `mobile/lib/companion/companion_character.dart` | Runs the idle and walk cycles and blinking, combines them with the animator into a `CompanionPose`, and has the selected style draw it. |
 | `mobile/lib/companion/styles/companion_style.dart` | The style contract: the `CompanionAnimation` list every style must show, the `CompanionPose` passed to styles, and the window sizes styles must fit. |
-| `mobile/lib/companion/styles/classic_style.dart` | The Classic style: a round teal body with two eyes, drawn on the canvas. |
 | `mobile/lib/companion/styles/companion_styles.dart` | Registry of styles in settings order. The first style is the default. |
 | `mobile/lib/companion/styles/companion_look.dart` | The saved look: the chosen style and the slot choices for each style, and its saved form. |
-| `mobile/lib/companion/styles/dress_up/dress_up_style.dart` | The Dress-up style: its slots, the parts it offers, and the animations shared by every base. |
-| `mobile/lib/companion/styles/dress_up/dress_up_parts.dart` | Dress-up bases, hats, and tops. |
+| `mobile/lib/companion/styles/bot/` | The Bot style, its shapes, and its hats and tops. See [Bot style and emotions](#bot-style-and-emotions). |
 | `mobile/lib/settings/settings_screen.dart` | Settings screen with the companion style picker, slot pickers for customizable styles, and animated previews. |
 | `mobile/lib/companion/companion_window.dart` | Overlay-side channel to read the window layout, move or resize the window, play the inflating sound, show an alert, and close it. Also receives layout changes and move requests from the service. |
 | `mobile/lib/companion/companion_state.dart` | Companion states (`hidden`, `entering`, `idle`, `walking`, `reacting`, `exiting`), facing, and mood. |
@@ -166,7 +164,7 @@ Future<void> wave(CompanionActionContext context) async {
 
 ### Add a companion style
 
-A style is a `CompanionStyle` with a stable `id`, a `name` for settings, and a `paint` method that draws one frame from a `CompanionPose`. The pose holds the progress of every animation in `CompanionAnimation`: `idle`, `walk`, `blink`, `bounce`, `backflip`, `sad`, and `inflate`, plus the facing direction. Several can be active at once, so a style must combine them, for example blinking while walking and sad. The values are normalized, so a style can draw with the canvas, pick sprite sheet frames, or drive a Rive state machine. `ClassicCompanionStyle` shows one way to map each value.
+A style is a `CompanionStyle` with a stable `id`, a `name` for settings, and a `paint` method that draws one frame from a `CompanionPose`. The pose holds the progress of every animation in `CompanionAnimation`: `idle`, `walk`, `blink`, `bounce`, `backflip`, `sad`, and `inflate`, plus the facing direction. Several can be active at once, so a style must combine them, for example blinking while walking and sad. The values are normalized, so a style can draw with the canvas, pick sprite sheet frames, or drive a Rive state machine. `BotCompanionStyle` shows one way to map each value.
 
 A style draws in design units, standing at the bottom center of a box. The box is `CompanionStyle.restSize` (96 by 96) most of the time and grows upward to `backflipSize` (96 by 160) or `inflateSize` (136 by 136) only during those animations, so each animation has to fit its box. In every animation, a style may draw at most `maxSideOverflow` (8 units) past either side of the resting width. The companion is shown at `displayScale` (2) logical pixels per unit, so the overlay window is 192 by 192 dp at rest. Add the style to `companionStyles` to list it in settings. Never change an `id` after release, because settings save it.
 
@@ -174,17 +172,17 @@ A style can also offer `slots`, things a person customizes such as a hat. Each `
 
 `test/companion_style_test.dart` checks every registered style, and every combination of options for a style with slots. For each animation it draws the style at rest and with that animation active and fails if the two frames are identical. It also fails if any frame of any animation reaches the edge of its box or draws past the side limit, facing either way, and if the style doesn't turn to face both ways. To add a new animation, add it to `CompanionAnimation` with a field on `CompanionPose` and an example value. The test then fails for each style until the style draws it.
 
-### Dress-up parts
+### Bot outfit
 
 | Slot | Options |
 | --- | --- |
-| Base | Green circle, Orange triangle |
+| Shape | Green circle, Orange triangle |
 | Hat | None, Cat ears, Cap, Top hat |
 | Top | None, T-shirt, Doctor's coat |
 
-Both bases have larger eyes with a shine dot than Classic. The Dress-up body is smaller than Classic, with a 23 instead of a 30 unit radius, so a hat still fits the window while the companion inflates or does a backflip. All bases share the same animations. Hats and tops are drawn on the body, so they move, spin, squash, and grow with it. The cap's bill and the coat's pocket pen follow the facing direction, and the stethoscope hangs on the other side. Cat ears take the body color and droop when sad. Tops are clipped to the body outline, so they fit any base. Saved choices for a part that was removed, such as the earlier party hat and scarf, fall back to **None**.
+The hats and tops came from the earlier Dress-up style. Hats and tops are drawn on the body, so they move, spin, squash, and grow with it. The cap's bill and the coat's pocket pen follow the facing direction, and the stethoscope hangs on the other side. Cat ears take the body's shade and droop when sad. Tops are clipped to the body outline, so they fit either shape. Saved choices for a part that was removed fall back to **None**.
 
-To add a base, extend `DressUpBase` with an outline, colors, and where the eyes, mouth, neck, and hat go, in multiples of the body radius. To add a hat or top, extend `DressUpAccessory` and draw it from the `DressUpBody` it receives. Add the part to `bases`, `hats`, or `tops` in `DressUpCompanionStyle`. The style test then checks it with every other part.
+To add a shape, extend `BotShape` with an outline, colours, its distance to the edge in each direction, and where the neck and hat go, in multiples of the body radius. To add a hat or top, extend `BotAccessory` and draw it from the `BotBody` it receives. Add the part to `shapes`, `hats`, or `tops` in `BotCompanionStyle`. The style test then checks it with every other part.
 
 ### Overlay decisions
 
@@ -212,9 +210,9 @@ flutter test
 flutter run
 ```
 
-`test/companion_test.dart` covers swipe classification in all four directions, the one-action-at-a-time rule, and the TEST button with granted and denied access. It also covers each test action with the window channel mocked: the alert on tap, walking off and closing on side swipes, the backflip's temporary resize, inputs blocked while sad, and the hold's sound, resize, and release. Inputs after closing are ignored. For styles, it covers the overlay drawing the saved style and Dress-up choices and switching when the look changes, and the settings picker opening from Connected devices, saving a style, customizing Dress-up, keeping Dress-up choices after switching style, and keeping the old style when saving fails. `test/companion_style_test.dart` also covers the Dress-up options, applying choices, and saving and reading looks, including bad saved data. For app control, it covers the 0 to 1 coordinate mapping with padding and density, walking to a point the app sends, and declining a move while busy.
+`test/companion_test.dart` covers swipe classification in all four directions, the one-action-at-a-time rule, and the TEST button with granted and denied access. It also covers each test action with the window channel mocked: the alert on tap, walking off and closing on side swipes, the backflip's temporary resize, inputs blocked while sad, and the hold's sound, resize, and release. Inputs after closing are ignored. For styles, it covers the overlay drawing the saved style and Bot choices and switching when the look changes, and the settings picker opening from Connected devices, saving a style, customizing Dress-up, keeping Dress-up choices after switching style, and keeping the old style when saving fails. `test/companion_style_test.dart` also covers the Bot options, the triangle outline, applying choices, and saving and reading looks, including bad saved data. For app control, it covers the 0 to 1 coordinate mapping with padding and density, walking to a point the app sends, and declining a move while busy.
 
-On a physical Android phone, tap **TEST**, grant access, and check that the companion walks in over the home screen. Open another app and confirm you can tap and scroll around the character. Try each input from the table, and check that other inputs do nothing while an action runs, especially during the two sad seconds. Hold with the phone's sound on to hear the inflating sound. Check the backflip and inflation aren't clipped and the character doesn't jump when the window resizes. Rotate the phone while it's visible and check it stays on screen. Swipe the companion away with a normal cache and confirm it stays hidden. Use **Stop** in the notification and check the companion and the notification go away. Open **Settings** and check that **Classic** is selected and its preview animates. Choose **Dress-up**, try each base, hat, and top, and check that the visible companion changes right away. Run each input with a hat on and check that the hat stays inside the window during the backflip and inflation.
+On a physical Android phone, tap **TEST**, grant access, and check that the companion walks in over the home screen. Open another app and confirm you can tap and scroll around the character. Try each input from the table, and check that other inputs do nothing while an action runs, especially during the two sad seconds. Hold with the phone's sound on to hear the inflating sound. Check the backflip and inflation aren't clipped and the character doesn't jump when the window resizes. Rotate the phone while it's visible and check it stays on screen. Swipe the companion away with a normal cache and confirm it stays hidden. Use **Stop** in the notification and check the companion and the notification go away. Open **Settings** and check that **Bot** is selected and its preview animates. Try each shape, hat, and top, and check that the visible companion changes right away. Run each input with the top hat on and check that the hat stays inside the window.
 
 Flutter analysis and all 274 tests passed, and the debug APK built. The companion hasn't been run on a device yet.
 
@@ -372,9 +370,11 @@ A 2B model follows these rules most of the time, not always. Check new wording o
 
 ## Bot style and emotions
 
-**Bot** is the default companion style. Its look takes inspiration from [bloub](https://bloub.vercel.app), an animated SVG avatar in the style of the x.ai bot: a solid body with two white rounded-bar eyes. The eyes sit on an imagined sphere inside the body. A sideways or upward gaze moves the eyes across the body and foreshortens them, so the flat shape looks round. Each expression is a set of eye sizes and tilts plus a gaze direction, and the face blends between them. Bot isn't a copy of bloub's art, geometry, or expressions.
+**Bot** is the only companion style. Its look follows [bloub](https://bloub.vercel.app), an animated SVG avatar in the style of the x.ai bot: a solid body with two white rounded-bar eyes. The eyes sit on an imagined sphere inside the body and are pushed out to the outline in their direction, so they follow a triangle as they do a circle. A sideways or upward gaze moves the eyes across the body and foreshortens them, so the flat shape looks round. Each expression is a set of eye sizes and tilts plus a gaze direction, and the face blends between them. The body colours, gradient, shadow, clothes, and motion are IXLand's own.
 
-In **Settings → Companion style → Bot**, **Shape** picks a **Green circle** (the Classic colours) or an **Orange triangle** (the Dress-up triangle colours). The triangle's body is 0.85 times the circle's size so it still fits the window while inflated. Its face sits lower and turns less, so the eyes stay on the body. A saved Classic or Dress-up look stays selected. Bot only applies when the look is unset or chosen in settings.
+The proportions come from bloub's source. Each resting eye is 0.186 by 0.412 body radii. At rest the face looks 28.5° toward the facing side and 28.6° up, rolled 13°, with each eye 15.46° from the middle. The sad, surprised, and confused faces use bloub's values too. The triangle is a sharp triangle with corners 0.78 radii from the center, widened by 0.34 radii in every direction. That leaves its tip 1.12 radii above the center and its flat base 0.73 below it.
+
+In **Settings → Companion style → Bot**, **Shape** picks a **Green circle** or an **Orange triangle**. Both share a 27 unit body radius, smaller than the earlier 30, so a top hat still fits the window while the companion inflates or jumps in surprise. Saved Classic or Dress-up looks fall back to Bot, and their earlier hat and top choices aren't carried over.
 
 | Emotion | Face | Body |
 | --- | --- | --- |
@@ -384,14 +384,16 @@ In **Settings → Companion style → Bot**, **Shape** picks a **Green circle** 
 | Confused | One eye open and one squinting, glancing away | Tilts its head and sways slowly |
 | Happy | Smiling arches looking up | A few springy hops |
 
-Moods never change the body's colour. Sadness makes the same colour a little duller and darker, and fear makes it a little paler. Classic and Dress-up still turn blue when sad.
+Moods never change the body's colour. Sadness makes the same colour a little duller and darker, and fear makes it a little paler.
 
 `CompanionAnimator.emote` plays one emotion on top of the current mood and completes when it ends. It eases in over 0.18 s, holds, and eases out over 0.3 s. Durations range from 1.4 s for surprised to 2 s for confused. A new emotion replaces one that is playing. The pose carries the emotion, its strength, and the time since it started, so looping motions such as trembling stay smooth.
 
 | Path | Role |
 | --- | --- |
-| `mobile/lib/companion/styles/bot_style.dart` | The Bot style: shapes, white eyes on a sphere, and the face for each mood and emotion. |
-| `mobile/lib/companion/styles/companion_emotion.dart` | Body motion for each emotion, the scared eye tremble, and an eye scale for round-eyed styles. Every style uses it. |
+| `mobile/lib/companion/styles/bot/bot_style.dart` | The Bot style: its slots, white eyes on a sphere, and the face for each mood and emotion. |
+| `mobile/lib/companion/styles/bot/bot_shapes.dart` | The circle and the rounded triangle, with each shape's distance to the edge in every direction. |
+| `mobile/lib/companion/styles/bot/bot_outfit.dart` | Hats and tops, drawn on the body. |
+| `mobile/lib/companion/styles/companion_emotion.dart` | Body motion for each emotion and the scared eye tremble. |
 | `mobile/lib/companion/companion_state.dart` | `CompanionEmotion`. |
 | `mobile/lib/companion/styles/companion_style.dart` | Five new `CompanionAnimation` values and the pose's emotion fields. |
 | `mobile/lib/companion/companion_animator.dart` | `emote`, with the emotion's strength and elapsed time. |
@@ -399,7 +401,8 @@ Moods never change the body's colour. Sadness makes the same colour a little dul
 
 Decisions:
 
-- The emotions are `CompanionAnimation` values, so the style test checks that every style and every option combination shows each one and stays inside its window. Classic and Dress-up use the shared body motion and scale their round eyes.
+- The emotions are `CompanionAnimation` values, so the style test checks that every combination of shape, hat, and top shows each one and stays inside its window.
+- Classic and Dress-up were removed. Bot took over Dress-up's hats and tops, and Settings lists Bot alone.
 - Bot draws with the canvas and `Path.combine`, so it needs no assets or packages.
 - Surprised, confused, and happy have no gesture yet. Monitoring alerts or the assistant could call `emote` next. The main app would need a channel call like `moveTo` to request one.
 

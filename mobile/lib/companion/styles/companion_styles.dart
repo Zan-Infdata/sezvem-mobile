@@ -1,15 +1,9 @@
-import 'bot_style.dart';
-import 'classic_style.dart';
+import 'bot/bot_style.dart';
 import 'companion_style.dart';
-import 'dress_up/dress_up_style.dart';
 
 /// Every companion style, in the order settings lists them. The first one is
 /// the default.
-const companionStyles = <CompanionStyle>[
-  BotCompanionStyle(),
-  ClassicCompanionStyle(),
-  DressUpCompanionStyle(),
-];
+const companionStyles = <CompanionStyle>[BotCompanionStyle()];
 
 /// The style saved as [id] in [styles], or the first style for an unknown or
 /// missing ID.

@@ -14,12 +14,11 @@ import 'package:ixland_mobile/companion/companion_overlay.dart';
 import 'package:ixland_mobile/companion/companion_overlay_app.dart';
 import 'package:ixland_mobile/companion/companion_state.dart';
 import 'package:ixland_mobile/companion/companion_window.dart';
-import 'package:ixland_mobile/companion/styles/bot_style.dart';
-import 'package:ixland_mobile/companion/styles/classic_style.dart';
+import 'package:ixland_mobile/companion/styles/bot/bot_outfit.dart';
+import 'package:ixland_mobile/companion/styles/bot/bot_shapes.dart';
+import 'package:ixland_mobile/companion/styles/bot/bot_style.dart';
 import 'package:ixland_mobile/companion/styles/companion_look.dart';
 import 'package:ixland_mobile/companion/styles/companion_style.dart';
-import 'package:ixland_mobile/companion/styles/dress_up/dress_up_parts.dart';
-import 'package:ixland_mobile/companion/styles/dress_up/dress_up_style.dart';
 import 'package:ixland_mobile/devices/connected_devices_screen.dart';
 import 'package:ixland_mobile/settings/patient_settings.dart';
 import 'package:ixland_mobile/settings/settings_screen.dart';
@@ -284,7 +283,6 @@ void main() {
 
       expect(find.text('Companion style'), findsOneWidget);
       expect(find.text('Bot'), findsOneWidget);
-      expect(find.text('Classic'), findsOneWidget);
       expect(selected(tester, 'Bot'), isTrue);
       await tester.pumpWidget(const SizedBox());
     });
@@ -320,12 +318,12 @@ void main() {
           home: SettingsScreen(
             companion: companion,
             patientSettings: PatientSettings(),
-            styles: const [ClassicCompanionStyle(), _DotStyle()],
+            styles: const [BotCompanionStyle(), _DotStyle()],
           ),
         ),
       );
       await pumpFor(tester, const Duration(milliseconds: 100));
-      expect(selected(tester, 'Classic'), isTrue);
+      expect(selected(tester, 'Bot'), isTrue);
 
       await tester.tap(find.text('Dot'));
       await pumpFor(tester, const Duration(milliseconds: 100));
@@ -335,28 +333,19 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('customizes Dress-up with a base, hat, and top', (
-      tester,
-    ) async {
+    testWidgets('customizes Bot with a shape, hat, and top', (tester) async {
       final companion = _FakeCompanionOverlay(granted: true);
       await tester.pumpWidget(
         MaterialApp(
           home: SettingsScreen(
             companion: companion,
             patientSettings: PatientSettings(),
-            styles: const [ClassicCompanionStyle(), DressUpCompanionStyle()],
           ),
         ),
       );
       await pumpFor(tester, const Duration(milliseconds: 100));
-      // Classic has nothing to customize.
-      expect(find.text('Hat'), findsNothing);
-
-      await tester.tap(find.text('Dress-up'));
-      await pumpFor(tester, const Duration(milliseconds: 100));
-      expect(companion.savedLook.styleId, 'dress_up');
       for (final label in [
-        'Base',
+        'Shape',
         'Green circle',
         'Orange triangle',
         'Hat',
@@ -379,28 +368,14 @@ void main() {
       );
       await tester.tap(find.text('Top hat'));
       await pumpFor(tester, const Duration(milliseconds: 100));
-      expect(companion.savedLook.choices['dress_up'], {
-        'base': 'triangle',
+      expect(companion.savedLook.choices['bot'], {
+        'shape': 'triangle',
         'hat': 'top_hat',
       });
       expect(
         companion.savedLook.resolve(),
-        const DressUpCompanionStyle(base: TriangleBase(), hat: TopHat()),
+        const BotCompanionStyle(shape: BotTriangle(), hat: TopHat()),
       );
-
-      // Switching style keeps the Dress-up choices for later.
-      await tester.dragUntilVisible(
-        find.text('Classic'),
-        find.byType(ListView).first,
-        const Offset(0, 200),
-      );
-      await tester.ensureVisible(find.text('Classic'));
-      await pumpFor(tester, const Duration(milliseconds: 300));
-      await tester.tap(find.text('Classic'));
-      await pumpFor(tester, const Duration(milliseconds: 100));
-      expect(find.text('Hat'), findsNothing);
-      expect(companion.savedLook.styleId, 'classic');
-      expect(companion.savedLook.choices['dress_up']?['hat'], 'top_hat');
       await tester.pumpWidget(const SizedBox());
     });
 
@@ -411,7 +386,7 @@ void main() {
           home: SettingsScreen(
             companion: companion,
             patientSettings: PatientSettings(),
-            styles: const [ClassicCompanionStyle(), _DotStyle()],
+            styles: const [BotCompanionStyle(), _DotStyle()],
           ),
         ),
       );
@@ -419,7 +394,7 @@ void main() {
       await tester.tap(find.text('Dot'));
       await pumpFor(tester, const Duration(milliseconds: 100));
 
-      expect(selected(tester, 'Classic'), isTrue);
+      expect(selected(tester, 'Bot'), isTrue);
       expect(find.text('Could not save the companion style.'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
@@ -712,7 +687,7 @@ void main() {
       tester,
     ) async {
       native.look = const CompanionLook(styleId: 'dot');
-      const styles = [ClassicCompanionStyle(), _DotStyle()];
+      const styles = [BotCompanionStyle(), _DotStyle()];
       await tester.pumpWidget(
         const SizedBox(
           width: 192,
@@ -726,20 +701,20 @@ void main() {
           .style;
       expect(drawn().id, 'dot');
 
-      await native.sendLook(tester, const CompanionLook(styleId: 'classic'));
-      expect(drawn().id, 'classic');
+      await native.sendLook(tester, const CompanionLook(styleId: 'bot'));
+      expect(drawn().id, 'bot');
 
       // An unknown style falls back to the first one.
       await native.sendLook(tester, const CompanionLook(styleId: 'gone'));
-      expect(drawn().id, 'classic');
+      expect(drawn().id, 'bot');
       await finish(tester);
     });
 
-    testWidgets('draws the saved Dress-up choices', (tester) async {
+    testWidgets('draws the saved Bot choices', (tester) async {
       native.look = const CompanionLook(
-        styleId: 'dress_up',
+        styleId: 'bot',
         choices: {
-          'dress_up': {'base': 'triangle', 'hat': 'cap', 'top': 'doctor_coat'},
+          'bot': {'shape': 'triangle', 'hat': 'cap', 'top': 'doctor_coat'},
         },
       );
       await tester.pumpWidget(
@@ -750,8 +725,8 @@ void main() {
         tester
             .widget<CompanionCharacter>(find.byType(CompanionCharacter))
             .style,
-        const DressUpCompanionStyle(
-          base: TriangleBase(),
+        const BotCompanionStyle(
+          shape: BotTriangle(),
           hat: Cap(),
           top: DoctorsCoat(),
         ),

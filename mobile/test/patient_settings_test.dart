@@ -45,6 +45,12 @@ void main() {
         ),
       );
       await tester.pump();
+      // The companion style pickers come first. Scroll to the patient ID.
+      await tester.scrollUntilVisible(
+        find.text('Create patient'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
     }
 
     final field = find.byType(TextField);

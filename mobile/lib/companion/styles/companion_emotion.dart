@@ -7,7 +7,7 @@ import 'companion_style.dart';
 
 /// How an emotion moves the whole body in one frame.
 ///
-/// Every style can apply it the same way, so each one shows the emotions
+/// A style applies it to the whole body, so a new style shows the emotions
 /// without its own motion code. Lengths are multiples of the body radius.
 /// Squash, stretch, and rotation pivot on the feet.
 class EmotionMotion {
@@ -88,25 +88,6 @@ class EmotionMotion {
     canvas.scale(scaleX, scaleY);
     canvas.translate(0, -feetY);
   }
-}
-
-/// How an emotion resizes a simple eye, for styles with round eyes.
-///
-/// [side] is -1 for the left eye and 1 for the right. The result multiplies
-/// the eye width and height.
-Size emotionEyeScale(CompanionPose pose, double side) {
-  var width = 1.0, height = 1.0;
-  final surprised = pose.amountOf(CompanionEmotion.surprised);
-  width *= 1 + surprised * 0.3;
-  height *= 1 + surprised * 0.3;
-  height *= 1 - pose.amountOf(CompanionEmotion.laughing) * 0.7;
-  final scared = pose.amountOf(CompanionEmotion.scared);
-  width *= 1 - scared * 0.15;
-  height *= 1 + scared * 0.15;
-  final confused = pose.amountOf(CompanionEmotion.confused);
-  height *= 1 + confused * (side < 0 ? 0.2 : -0.4);
-  height *= 1 - pose.amountOf(CompanionEmotion.happy) * 0.45;
-  return Size(width, height);
 }
 
 /// How far fear shakes the eye on [side], -1 left or 1 right, in multiples

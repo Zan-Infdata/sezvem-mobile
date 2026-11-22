@@ -2,21 +2,24 @@ import 'dart:math' as math;
 
 import 'package:flutter/painting.dart';
 
+import 'bot_shapes.dart';
+
 /// The body a hat or top is drawn on, in body coordinates.
 ///
-/// The origin is the body center and [radius] the body size. The feet are at
-/// `y = radius`. [direction] is -1 facing left and 1 facing right. Accessories
-/// drawn here move, spin, squash, and grow with the body.
-class DressUpBody {
-  const DressUpBody({
-    required this.base,
+/// The origin is the body center and [radius] the body size. [direction] is
+/// -1 facing left and 1 facing right. Clothes drawn here move, spin, squash,
+/// and grow with the body.
+class BotBody {
+  const BotBody({
+    required this.shape,
     required this.radius,
     required this.direction,
     required this.sadness,
     required this.outline,
+    required this.fur,
   });
 
-  final DressUpBase base;
+  final BotShape shape;
   final double radius;
   final double direction;
 
@@ -26,152 +29,30 @@ class DressUpBody {
   /// The body outline, for clipping clothes to the body.
   final Path outline;
 
+  /// The body's darker colour in its current shade, for parts such as ears.
+  final Color fur;
+
   /// Center of the hat brim.
-  Offset get hatPoint => Offset(0, base.hatY * radius);
+  Offset get hatPoint => Offset(0, shape.hatY * radius);
 
   /// Width the hat brim should cover.
-  double get hatWidth => base.hatWidth * radius;
+  double get hatWidth => shape.hatWidth * radius;
 
   /// Top of the neck, where a top starts.
-  double get neckY => base.neckY * radius;
-}
-
-/// A body shape with its colors and where the face and accessories go.
-///
-/// Positions are in multiples of the body radius from the body center. Keep
-/// everything within about one radius so the companion fits its window.
-abstract class DressUpBase {
-  const DressUpBase();
-
-  String get id;
-  String get name;
-
-  /// Body colors: highlight and shade, then the same when fully sad.
-  Color get light;
-  Color get dark;
-  Color get sadLight;
-  Color get sadDark;
-
-  /// Eye center height and distance from the middle.
-  double get eyeY;
-  double get eyeSpacing;
-
-  /// Eye width and height, and pupil radius.
-  double get eyeWidth;
-  double get eyeHeight;
-  double get pupil;
-
-  /// Height of the sad mouth.
-  double get mouthY;
-
-  /// Top of the neck, where a top starts. Below [mouthY].
-  double get neckY;
-
-  /// Center height of the hat brim, and the brim width.
-  double get hatY;
-  double get hatWidth;
-
-  Path outline(double radius);
-}
-
-/// The green circle from the Classic style.
-class CircleBase extends DressUpBase {
-  const CircleBase();
-
-  @override
-  String get id => 'circle';
-  @override
-  String get name => 'Green circle';
-
-  @override
-  Color get light => const Color(0xFF80CBC4);
-  @override
-  Color get dark => const Color(0xFF00897B);
-  @override
-  Color get sadLight => const Color(0xFF9FA8DA);
-  @override
-  Color get sadDark => const Color(0xFF5C6BC0);
-
-  @override
-  double get eyeY => -0.2;
-  @override
-  double get eyeSpacing => 0.4;
-  @override
-  double get eyeWidth => 0.52;
-  @override
-  double get eyeHeight => 0.62;
-  @override
-  double get pupil => 0.16;
-  @override
-  double get mouthY => 0.4;
-  @override
-  double get neckY => 0.55;
-  @override
-  double get hatY => -0.8;
-  @override
-  double get hatWidth => 1.15;
-
-  @override
-  Path outline(double radius) =>
-      Path()..addOval(Rect.fromCircle(center: Offset.zero, radius: radius));
-}
-
-/// An orange triangle with rounded corners, pointing up.
-class TriangleBase extends DressUpBase {
-  const TriangleBase();
-
-  @override
-  String get id => 'triangle';
-  @override
-  String get name => 'Orange triangle';
-
-  @override
-  Color get light => const Color(0xFFFFCC80);
-  @override
-  Color get dark => const Color(0xFFEF6C00);
-  @override
-  Color get sadLight => const Color(0xFFB0BEC5);
-  @override
-  Color get sadDark => const Color(0xFF546E7A);
-
-  @override
-  double get eyeY => 0.15;
-  @override
-  double get eyeSpacing => 0.32;
-  @override
-  double get eyeWidth => 0.42;
-  @override
-  double get eyeHeight => 0.5;
-  @override
-  double get pupil => 0.13;
-  @override
-  double get mouthY => 0.5;
-  @override
-  double get neckY => 0.6;
-  @override
-  double get hatY => -0.82;
-  @override
-  double get hatWidth => 0.85;
-
-  @override
-  Path outline(double radius) => _roundedPolygon([
-    Offset(0, -1.15 * radius),
-    Offset(1.1 * radius, radius),
-    Offset(-1.1 * radius, radius),
-  ], radius * 0.22);
+  double get neckY => shape.neckY * radius;
 }
 
 /// Something worn on the head or the body.
-abstract class DressUpAccessory {
-  const DressUpAccessory();
+abstract class BotAccessory {
+  const BotAccessory();
 
   String get id;
   String get name;
 
-  void paint(Canvas canvas, DressUpBody body);
+  void paint(Canvas canvas, BotBody body);
 }
 
-class NoAccessory extends DressUpAccessory {
+class NoAccessory extends BotAccessory {
   const NoAccessory();
 
   @override
@@ -180,11 +61,11 @@ class NoAccessory extends DressUpAccessory {
   String get name => 'None';
 
   @override
-  void paint(Canvas canvas, DressUpBody body) {}
+  void paint(Canvas canvas, BotBody body) {}
 }
 
 /// Two pointed cat ears in the body color with pink insides.
-class CatEars extends DressUpAccessory {
+class CatEars extends BotAccessory {
   const CatEars();
 
   @override
@@ -193,10 +74,9 @@ class CatEars extends DressUpAccessory {
   String get name => 'Cat ears';
 
   @override
-  void paint(Canvas canvas, DressUpBody body) {
+  void paint(Canvas canvas, BotBody body) {
     final r = body.radius;
-    final base = body.base;
-    final fur = Color.lerp(base.dark, base.sadDark, body.sadness)!;
+    final fur = body.fur;
     // Ears droop outward a little when sad.
     final droop = body.sadness * 0.35;
     for (final side in [-1.0, 1.0]) {
@@ -227,7 +107,7 @@ class CatEars extends DressUpAccessory {
 }
 
 /// A baseball cap with its bill pointing the way the companion faces.
-class Cap extends DressUpAccessory {
+class Cap extends BotAccessory {
   const Cap();
 
   @override
@@ -236,7 +116,7 @@ class Cap extends DressUpAccessory {
   String get name => 'Cap';
 
   @override
-  void paint(Canvas canvas, DressUpBody body) {
+  void paint(Canvas canvas, BotBody body) {
     final r = body.radius;
     final brim = body.hatPoint;
     final width = body.hatWidth * 0.9;
@@ -270,7 +150,7 @@ class Cap extends DressUpAccessory {
 }
 
 /// A tall black hat with a red band.
-class TopHat extends DressUpAccessory {
+class TopHat extends BotAccessory {
   const TopHat();
 
   @override
@@ -279,7 +159,7 @@ class TopHat extends DressUpAccessory {
   String get name => 'Top hat';
 
   @override
-  void paint(Canvas canvas, DressUpBody body) {
+  void paint(Canvas canvas, BotBody body) {
     final r = body.radius;
     final brim = body.hatPoint;
     final black = Paint()..color = const Color(0xFF212121);
@@ -317,7 +197,7 @@ class TopHat extends DressUpAccessory {
 }
 
 /// A striped shirt covering the body below the neck.
-class TShirt extends DressUpAccessory {
+class TShirt extends BotAccessory {
   const TShirt();
 
   @override
@@ -326,7 +206,7 @@ class TShirt extends DressUpAccessory {
   String get name => 'T-shirt';
 
   @override
-  void paint(Canvas canvas, DressUpBody body) {
+  void paint(Canvas canvas, BotBody body) {
     final r = body.radius;
     final top = body.neckY;
     canvas.save();
@@ -354,7 +234,7 @@ class TShirt extends DressUpAccessory {
 
 /// A white doctor's coat with lapels, a pen in the pocket, and a
 /// stethoscope around the neck.
-class DoctorsCoat extends DressUpAccessory {
+class DoctorsCoat extends BotAccessory {
   const DoctorsCoat();
 
   @override
@@ -363,7 +243,7 @@ class DoctorsCoat extends DressUpAccessory {
   String get name => "Doctor's coat";
 
   @override
-  void paint(Canvas canvas, DressUpBody body) {
+  void paint(Canvas canvas, BotBody body) {
     final r = body.radius;
     final top = body.neckY - r * 0.06;
     final white = Paint()..color = const Color(0xFFFAFAFA);
@@ -443,28 +323,4 @@ class DoctorsCoat extends DressUpAccessory {
       Paint()..color = const Color(0xFF90A4AE),
     );
   }
-}
-
-/// A closed polygon through [points] with each corner rounded by [corner].
-Path _roundedPolygon(List<Offset> points, double corner) {
-  final path = Path();
-  for (var i = 0; i < points.length; i++) {
-    final previous = points[(i - 1 + points.length) % points.length];
-    final current = points[i];
-    final next = points[(i + 1) % points.length];
-    final start = current + _toward(current, previous, corner);
-    final end = current + _toward(current, next, corner);
-    if (i == 0) {
-      path.moveTo(start.dx, start.dy);
-    } else {
-      path.lineTo(start.dx, start.dy);
-    }
-    path.quadraticBezierTo(current.dx, current.dy, end.dx, end.dy);
-  }
-  return path..close();
-}
-
-Offset _toward(Offset from, Offset to, double distance) {
-  final delta = to - from;
-  return delta / delta.distance * distance;
 }

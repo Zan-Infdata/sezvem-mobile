@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -6,8 +7,9 @@ import 'package:ixland_mobile/companion/companion_state.dart';
 import 'package:ixland_mobile/companion/styles/companion_look.dart';
 import 'package:ixland_mobile/companion/styles/companion_style.dart';
 import 'package:ixland_mobile/companion/styles/companion_styles.dart';
-import 'package:ixland_mobile/companion/styles/dress_up/dress_up_parts.dart';
-import 'package:ixland_mobile/companion/styles/dress_up/dress_up_style.dart';
+import 'package:ixland_mobile/companion/styles/bot/bot_outfit.dart';
+import 'package:ixland_mobile/companion/styles/bot/bot_shapes.dart';
+import 'package:ixland_mobile/companion/styles/bot/bot_style.dart';
 
 /// Checks the contract in `companion_style.dart` for every registered style.
 void main() {
@@ -27,44 +29,58 @@ void main() {
     expect(companionStyleById('no-such-style'), same(companionStyles.first));
   });
 
-  test('Dress-up offers 2 bases, 3 hats, and 2 tops, plus none', () {
+  test('Bot offers 2 shapes, 3 hats, and 2 tops, plus none', () {
     final slots = {
-      for (final slot in const DressUpCompanionStyle().slots)
+      for (final slot in const BotCompanionStyle().slots)
         slot.id: [for (final option in slot.options) option.id],
     };
     expect(slots, {
-      'base': ['circle', 'triangle'],
+      'shape': ['circle', 'triangle'],
       'hat': ['none', 'cat_ears', 'cap', 'top_hat'],
       'top': ['none', 'tshirt', 'doctor_coat'],
     });
   });
 
-  test('Dress-up applies known choices and keeps the rest', () {
-    final style = const DressUpCompanionStyle().customize({
-      'base': 'triangle',
+  test('Bot applies known choices and keeps the rest', () {
+    final style = const BotCompanionStyle().customize({
+      'shape': 'triangle',
       'hat': 'cap',
       'top': 'no-such-top',
       'shoes': 'boots',
     });
-    expect(style.choices, {'base': 'triangle', 'hat': 'cap', 'top': 'none'});
-    expect(
-      style,
-      const DressUpCompanionStyle(base: TriangleBase(), hat: Cap()),
-    );
+    expect(style.choices, {'shape': 'triangle', 'hat': 'cap', 'top': 'none'});
+    expect(style, const BotCompanionStyle(shape: BotTriangle(), hat: Cap()));
+  });
+
+  test('the triangle matches its outline in every direction', () {
+    const triangle = BotTriangle();
+    // Tip, base, and the widest point of the rounded corners.
+    expect(triangle.radiusAt(-math.pi / 2), closeTo(1.12, 0.001));
+    expect(triangle.radiusAt(math.pi / 2), closeTo(0.73, 0.001));
+    expect(triangle.bottom, closeTo(0.73, 0.001));
+    final outline = triangle.outline(100);
+    for (var i = 0; i < 64; i++) {
+      final angle = i / 64 * 2 * math.pi;
+      final direction = ui.Offset(math.cos(angle), math.sin(angle));
+      final reach = triangle.radiusAt(angle) * 100;
+      expect(outline.contains(direction * (reach - 0.5)), isTrue);
+      expect(outline.contains(direction * (reach + 0.5)), isFalse);
+    }
+    expect(const BotCircle().radiusAt(1), 1);
   });
 
   group('CompanionLook', () {
     test('round-trips through the saved form', () {
       const look = CompanionLook(
-        styleId: 'dress_up',
+        styleId: 'bot',
         choices: {
-          'dress_up': {'base': 'triangle', 'hat': 'cat_ears'},
+          'bot': {'shape': 'triangle', 'hat': 'cat_ears'},
         },
       );
       expect(CompanionLook.fromMap(look.toMap()), look);
       expect(
         look.resolve(),
-        const DressUpCompanionStyle(base: TriangleBase(), hat: CatEars()),
+        const BotCompanionStyle(shape: BotTriangle(), hat: CatEars()),
       );
     });
 
@@ -76,16 +92,21 @@ void main() {
 
     test('keeps choices for each style separately', () {
       final look = const CompanionLook()
-          .withChoice('dress_up', 'hat', 'cap')
+          .withChoice('bot', 'hat', 'cap')
           .withChoice('other', 'hat', 'crown')
-          .withChoice('dress_up', 'top', 'doctor_coat')
-          .withStyle('dress_up');
+          .withChoice('bot', 'top', 'doctor_coat')
+          .withStyle('bot');
       expect(look.choices, {
-        'dress_up': {'hat': 'cap', 'top': 'doctor_coat'},
+        'bot': {'hat': 'cap', 'top': 'doctor_coat'},
         'other': {'hat': 'crown'},
       });
-      expect(look.withStyle('classic').resolve().id, 'classic');
       expect(look.resolve().choices['hat'], 'cap');
+    });
+
+    test('a removed style falls back to Bot', () {
+      for (final id in ['classic', 'dress_up']) {
+        expect(CompanionLook(styleId: id).resolve().id, 'bot');
+      }
     });
   });
 

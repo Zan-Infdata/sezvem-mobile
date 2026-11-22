@@ -4,31 +4,43 @@ import 'dart:typed_data';
 import 'package:flutter/animation.dart';
 import 'package:flutter/painting.dart';
 
-import '../companion_state.dart';
-import 'companion_emotion.dart';
-import 'companion_style.dart';
+import '../../companion_state.dart';
+import '../companion_emotion.dart';
+import '../companion_style.dart';
+import 'bot_outfit.dart';
+import 'bot_shapes.dart';
 
-/// A solid shape with two white rounded-bar eyes.
+/// A solid shape with two white rounded-bar eyes, and optional clothes.
 ///
-/// The eyes sit on an imagined sphere inside the body. Turning the gaze moves
-/// them across the body and foreshortens them, which makes a flat shape look
-/// round. Each expression is a set of eye shapes and a gaze direction, and
-/// the companion blends between them.
+/// The look follows [bloub](https://bloub.vercel.app). The eyes sit on an
+/// imagined sphere inside the body and are pushed out to the outline, so
+/// turning the gaze moves them across the body and foreshortens them. Each
+/// expression is a set of eye shapes and a gaze direction, and the companion
+/// blends between them.
 class BotCompanionStyle extends CompanionStyle {
-  const BotCompanionStyle({this.shape = const BotCircle()});
+  const BotCompanionStyle({
+    this.shape = const BotCircle(),
+    this.hat = const NoAccessory(),
+    this.top = const NoAccessory(),
+  });
 
   static const shapes = <BotShape>[BotCircle(), BotTriangle()];
+  static const hats = <BotAccessory>[NoAccessory(), CatEars(), Cap(), TopHat()];
+  static const tops = <BotAccessory>[NoAccessory(), TShirt(), DoctorsCoat()];
 
-  /// Body radius of the circle at normal size.
-  static const bodyRadius = 30.0;
+  /// Body radius at normal size. Small enough that a top hat still fits the
+  /// window while the companion inflates or jumps in surprise.
+  static const bodyRadius = 27.0;
 
   /// Distance from the bottom of the window to the ground line.
   static const groundInset = 10.0;
 
   /// Backflip jump height. Fits [CompanionStyle.backflipSize].
-  static const jumpHeight = 56.0;
+  static const jumpHeight = 52.0;
 
   final BotShape shape;
+  final BotAccessory hat;
+  final BotAccessory top;
 
   @override
   String get id => 'bot';
@@ -42,28 +54,50 @@ class BotCompanionStyle extends CompanionStyle {
       id: 'shape',
       name: 'Shape',
       options: [
-        for (final shape in shapes)
-          CompanionOption(id: shape.id, name: shape.name),
+        for (final part in shapes)
+          CompanionOption(id: part.id, name: part.name),
+      ],
+    ),
+    CompanionSlot(
+      id: 'hat',
+      name: 'Hat',
+      options: [
+        for (final part in hats) CompanionOption(id: part.id, name: part.name),
+      ],
+    ),
+    CompanionSlot(
+      id: 'top',
+      name: 'Top',
+      options: [
+        for (final part in tops) CompanionOption(id: part.id, name: part.name),
       ],
     ),
   ];
 
   @override
-  Map<String, String> get choices => {'shape': shape.id};
+  Map<String, String> get choices => {
+    'shape': shape.id,
+    'hat': hat.id,
+    'top': top.id,
+  };
 
   @override
   BotCompanionStyle customize(Map<String, String> choices) {
-    final picked = shapes.firstWhere(
-      (shape) => shape.id == choices['shape'],
-      orElse: () => shape,
+    T pick<T>(List<T> parts, String? id, String Function(T) idOf, T current) =>
+        parts.firstWhere((part) => idOf(part) == id, orElse: () => current);
+    final customized = BotCompanionStyle(
+      shape: pick(shapes, choices['shape'], (part) => part.id, shape),
+      hat: pick(hats, choices['hat'], (part) => part.id, hat),
+      top: pick(tops, choices['top'], (part) => part.id, top),
     );
-    return picked.id == shape.id ? this : BotCompanionStyle(shape: picked);
+    return customized == this ? this : customized;
   }
 
   @override
   void paint(Canvas canvas, Size size, CompanionPose pose) {
     final direction = pose.facing == CompanionFacing.left ? -1.0 : 1.0;
-    final radius = bodyRadius * shape.size * pose.inflate;
+    final radius = bodyRadius * pose.inflate;
+    final feet = shape.bottom * radius;
     final groundY = size.height - groundInset;
 
     // idle and walk: bob up and down, and sway while walking. Sadness damps it.
@@ -81,7 +115,7 @@ class BotCompanionStyle extends CompanionStyle {
     final motion = EmotionMotion.of(pose, direction);
 
     final lift = bob * radius * 0.18 + jump * jumpHeight + motion.lift * radius;
-    final center = Offset(size.width / 2, groundY - radius - lift);
+    final center = Offset(size.width / 2, groundY - feet - lift);
 
     // The shadow shrinks as the character leaves the ground.
     final shadow = 1 - (jump * 0.6 + motion.lift).clamp(0.0, 0.7);
@@ -98,31 +132,39 @@ class BotCompanionStyle extends CompanionStyle {
     canvas.translate(center.dx, center.dy);
     canvas.rotate(-flip * direction);
     // Sway, squash, and emotions pivot on the feet.
-    canvas.translate(0, radius);
+    canvas.translate(0, feet);
     canvas.rotate(tilt * direction);
     canvas.scale(1 + squash * 0.18, 1 - squash * 0.18);
-    canvas.translate(0, -radius);
-    motion.applyAtFeet(canvas, radius);
+    canvas.translate(0, -feet);
+    motion.applyAtFeet(canvas, feet);
 
     final outline = shape.outline(radius);
     // Moods only shift the shade: sadness dulls it and fear makes it paler.
     final scared = pose.amountOf(CompanionEmotion.scared);
+    final dark = _shade(shape.dark, pose.sad, scared);
     canvas.drawPath(
       outline,
       Paint()
         ..shader = RadialGradient(
           center: const Alignment(-0.35, -0.45),
           radius: 0.8,
-          colors: [
-            _shade(shape.light, pose.sad, scared),
-            _shade(shape.dark, pose.sad, scared),
-          ],
+          colors: [_shade(shape.light, pose.sad, scared), dark],
         ).createShader(outline.getBounds()),
     );
+    final body = BotBody(
+      shape: shape,
+      radius: radius,
+      direction: direction,
+      sadness: pose.sad,
+      outline: outline,
+      fur: dark,
+    );
+    top.paint(canvas, body);
     canvas.drawPath(
       _eyes(_face(pose, direction), radius, pose),
       Paint()..color = const Color(0xFFFFFFFF),
     );
+    hat.paint(canvas, body);
     canvas.restore();
   }
 
@@ -143,8 +185,7 @@ class BotCompanionStyle extends CompanionStyle {
         math.sin(2 * math.pi * pose.emotionTime * 1.5) *
         12;
     return face.copyWith(
-      yaw:
-          (face.yaw + math.sin(phase) * 4 + dart) * direction * shape.gazeScale,
+      yaw: (face.yaw + math.sin(phase) * 4 + dart) * direction,
       pitch: face.pitch + math.cos(phase) * 3,
       roll: face.roll * direction,
     );
@@ -183,8 +224,6 @@ class BotCompanionStyle extends CompanionStyle {
       down * math.cos(roll) - right * math.sin(roll),
     );
 
-    final scale = radius * shape.faceScale;
-    final blink = pose.blink;
     final eyes = Path();
     for (final side in [-1.0, 1.0]) {
       final eye = side < 0 ? face.left : face.right;
@@ -194,151 +233,41 @@ class BotCompanionStyle extends CompanionStyle {
       if (normal.z <= 0.05) continue;
       final across = right * math.cos(split) - forward * math.sin(split);
 
-      final eyeScale = scale * shape.eyeSize;
-      final hole = eye.path(
-        eye.width * eyeScale,
-        math.max(eye.height * eyeScale * (1 - blink * 0.9), scale * 0.02),
+      final eyePath = eye.path(
+        eye.width * radius,
+        math.max(eye.height * radius * (1 - pose.blink * 0.9), radius * 0.02),
         _rad(eye.tilt * -side),
       );
-      // Lay the flat eye on the sphere's surface at its position.
+      // The sphere point, pushed out to the outline in its direction so the
+      // eyes follow a triangle as they do a circle.
+      final reach = radius * shape.radiusAt(math.atan2(normal.y, normal.x));
       // scared: each eye trembles on its own.
-      final shake = emotionEyeShake(pose, side) * scale;
+      final shake = emotionEyeShake(pose, side) * radius;
       final onSphere = _affine(
         across.x,
         across.y,
         down.x,
         down.y,
-        normal.x * scale + shake.dx,
-        normal.y * scale + shape.faceY * radius + shake.dy,
+        normal.x * reach + shake.dx,
+        normal.y * reach + shake.dy,
       );
-      eyes.addPath(hole.transform(onSphere), Offset.zero);
+      eyes.addPath(eyePath.transform(onSphere), Offset.zero);
     }
     return eyes;
   }
 
   @override
   bool operator ==(Object other) =>
-      other is BotCompanionStyle && other.shape.id == shape.id;
+      other is BotCompanionStyle &&
+      other.shape.id == shape.id &&
+      other.hat.id == hat.id &&
+      other.top.id == top.id;
 
   @override
-  int get hashCode => shape.id.hashCode;
+  int get hashCode => Object.hash(shape.id, hat.id, top.id);
 }
 
-/// A body shape for [BotCompanionStyle] with its colours and where its face
-/// goes. Lengths are multiples of the body radius.
-abstract class BotShape {
-  const BotShape();
-
-  String get id;
-  String get name;
-
-  /// Body colours: highlight and shade.
-  Color get light;
-  Color get dark;
-
-  /// Radius relative to [BotCompanionStyle.bodyRadius]. A wide shape is
-  /// smaller so it fits its window while inflated.
-  double get size => 1;
-
-  /// Height of the face center below the body center.
-  double get faceY => 0;
-
-  /// Radius of the sphere the eyes sit on.
-  double get faceScale => 1;
-
-  /// How far the gaze turns sideways relative to the circle. A narrow face
-  /// turns less so its eyes stay on the body.
-  double get gazeScale => 1;
-
-  /// Eye size relative to the face sphere.
-  double get eyeSize => 1.25;
-
-  /// Shadow width.
-  double get shadowWidth => 1.6;
-
-  /// The outline around the body center. The feet are at `y = radius`.
-  Path outline(double radius);
-}
-
-/// The green circle from the Classic style.
-class BotCircle extends BotShape {
-  const BotCircle();
-
-  @override
-  String get id => 'circle';
-  @override
-  String get name => 'Green circle';
-
-  @override
-  Color get light => const Color(0xFF80CBC4);
-  @override
-  Color get dark => const Color(0xFF00897B);
-
-  @override
-  Path outline(double radius) =>
-      Path()..addOval(Rect.fromCircle(center: Offset.zero, radius: radius));
-}
-
-/// The orange triangle from the Dress-up style, with rounded corners.
-class BotTriangle extends BotShape {
-  const BotTriangle();
-
-  @override
-  String get id => 'triangle';
-  @override
-  String get name => 'Orange triangle';
-
-  @override
-  Color get light => const Color(0xFFFFCC80);
-  @override
-  Color get dark => const Color(0xFFEF6C00);
-
-  @override
-  double get size => 0.85;
-  @override
-  double get faceY => 0.3;
-  @override
-  double get faceScale => 0.72;
-  @override
-  double get gazeScale => 0.6;
-  @override
-  double get eyeSize => 1.5;
-  @override
-  double get shadowWidth => 1.9;
-
-  @override
-  Path outline(double radius) {
-    final corners = [
-      Offset(0, -1.15 * radius),
-      Offset(1.1 * radius, radius),
-      Offset(-1.1 * radius, radius),
-    ];
-    final corner = radius * 0.22;
-    final path = Path();
-    for (var i = 0; i < corners.length; i++) {
-      final previous = corners[(i + corners.length - 1) % corners.length];
-      final current = corners[i];
-      final next = corners[(i + 1) % corners.length];
-      final start = current + _toward(current, previous, corner);
-      final end = current + _toward(current, next, corner);
-      if (i == 0) {
-        path.moveTo(start.dx, start.dy);
-      } else {
-        path.lineTo(start.dx, start.dy);
-      }
-      path.quadraticBezierTo(current.dx, current.dy, end.dx, end.dy);
-    }
-    return path..close();
-  }
-
-  static Offset _toward(Offset from, Offset to, double distance) {
-    final delta = to - from;
-    return delta / delta.distance * distance;
-  }
-}
-
-/// One eye's shape. Width and height are multiples of the face sphere
-/// radius. [tilt] is in degrees for the left eye; the right eye mirrors it.
+/// One eye's shape. Width and height are multiples of the body radius. [tilt] is in degrees for the left eye; the right eye mirrors it.
 /// [smile] from 0 to 1 hollows the bottom into an arch.
 class _Eye {
   const _Eye(this.width, this.height, {this.tilt = 0, this.smile = 0});
@@ -383,23 +312,24 @@ class _Eye {
 
 /// Where the eyes are and what they look like. Angles are in degrees: [yaw]
 /// turns toward the facing side, positive [pitch] looks up, and [split] is
-/// the angle between each eye and the middle of the face.
+/// the angle between each eye and the middle of the face. The resting face
+/// and the sad, surprised, and confused faces use bloub's values.
 class _Face {
   const _Face({
     required this.left,
     required this.right,
-    this.split = 16,
-    this.yaw = 22,
-    this.pitch = 10,
-    this.roll = 0,
+    this.split = 15.46,
+    this.yaw = 28.49,
+    this.pitch = 28.62,
+    this.roll = -13,
   });
 
   const _Face.both(
     _Eye eye, {
-    double split = 16,
-    double yaw = 22,
-    double pitch = 10,
-    double roll = 0,
+    double split = 15.46,
+    double yaw = 28.49,
+    double pitch = 28.62,
+    double roll = -13,
   }) : this(
          left: eye,
          right: eye,
@@ -409,36 +339,45 @@ class _Face {
          roll: roll,
        );
 
-  static const resting = _Face.both(_Eye(0.19, 0.41));
-  static const walking = _Face.both(_Eye(0.19, 0.41), yaw: 32, pitch: 4);
+  static const resting = _Face.both(_Eye(0.186, 0.412));
+  static const walking = _Face.both(
+    _Eye(0.186, 0.412),
+    yaw: 34,
+    pitch: 18,
+    roll: -8,
+  );
   static const sad = _Face.both(
-    _Eye(0.21, 0.34, tilt: -24),
-    split: 15,
-    yaw: 10,
-    pitch: -14,
+    _Eye(0.22, 0.4, tilt: -28),
+    split: 16,
+    yaw: 3,
+    pitch: -13,
+    roll: 0,
   );
 
   static _Face of(CompanionEmotion emotion) => switch (emotion) {
     // Wide round eyes, looking straight out.
     CompanionEmotion.surprised => const _Face.both(
-      _Eye(0.36, 0.44),
+      _Eye(0.45, 0.47),
       split: 19,
-      yaw: 6,
-      pitch: -2,
+      yaw: 3,
+      pitch: -3,
+      roll: 0,
     ),
     // Eyes squeezed into arches, head thrown back.
     CompanionEmotion.laughing => const _Face.both(
-      _Eye(0.32, 0.22, tilt: 10, smile: 1),
+      _Eye(0.4, 0.275, tilt: 10, smile: 1),
       split: 18,
       yaw: 4,
       pitch: 16,
+      roll: 0,
     ),
     // Big round worried eyes, looking down and away.
     CompanionEmotion.scared => const _Face.both(
-      _Eye(0.36, 0.4, tilt: -10),
-      split: 20,
+      _Eye(0.45, 0.5, tilt: -10),
+      split: 20.5,
       yaw: -10,
       pitch: -14,
+      roll: 0,
     ),
     // One eye open, one squinting, glancing away with a tilt.
     CompanionEmotion.confused => const _Face(
@@ -451,10 +390,11 @@ class _Face {
     ),
     // Smiling arches, looking up.
     CompanionEmotion.happy => const _Face.both(
-      _Eye(0.27, 0.32, smile: 0.85),
+      _Eye(0.34, 0.4, smile: 0.85),
       split: 17,
       yaw: 8,
       pitch: 12,
+      roll: 0,
     ),
   };
 
