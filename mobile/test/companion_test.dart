@@ -138,7 +138,11 @@ void main() {
     const normal = MonitoringStatus.normal;
     const warning = MonitoringStatus.warning;
     const critical = MonitoringStatus.critical;
+    const emergency = MonitoringStatus.emergency;
     const patientId = 'fixture-patient';
+    const emergencyNotice =
+        'Contact your medical team immediately. '
+        'Your monitoring results indicate a risk of complications.';
 
     MonitoringSnapshot snapshot(MonitoringStatus a, MonitoringStatus b) => (
       patientId: patientId,
@@ -175,6 +179,82 @@ void main() {
         expect(state, containsPair('resolved', true));
       }
     });
+
+    test(
+      'summons the companion and shows one urgent alert for emergency states',
+      () async {
+        final companion = _FakeCompanionOverlay(granted: false);
+        final monitoring = CompanionMonitoring(companion)
+          ..setPatient(patientId);
+        addTearDown(monitoring.dispose);
+
+        final emergencies = snapshot(emergency, emergency);
+        await monitoring.update(emergencies);
+        expect(companion.showing, isFalse);
+        expect(companion.alerts, isEmpty);
+        expect(cached(monitoring, 0), containsPair('addressed', true));
+        expect(cached(monitoring, 1), containsPair('addressed', true));
+
+        companion.granted = true;
+        await monitoring.retry();
+        await monitoring.update(emergencies);
+        expect(companion.showing, isTrue);
+        expect(companion.alerts, [emergencyNotice]);
+        expect(cached(monitoring, 0), containsPair('addressed', false));
+        expect(cached(monitoring, 1), containsPair('addressed', false));
+
+        companion.showing = false;
+        await monitoring.onDismissed();
+        expect(companion.showing, isTrue);
+        expect(companion.alerts, [emergencyNotice, emergencyNotice]);
+      },
+    );
+
+    test(
+      'emergency escalation interrupts check-ins and defers lower-priority states',
+      () async {
+        final companion = _FakeCompanionOverlay(granted: true, showing: true);
+        final monitoring = CompanionMonitoring(companion)
+          ..setPatient(patientId);
+        addTearDown(monitoring.dispose);
+
+        Future<void> update(MonitoringStatus first, MonitoringStatus second) =>
+            monitoring.update((
+              patientId: patientId,
+              states: [
+                MonitoringState(
+                  id: 's-00000001',
+                  status: first,
+                  prompt: 'First check-in.',
+                ),
+                MonitoringState(
+                  id: 's-00000002',
+                  status: second,
+                  prompt: 'Second check-in.',
+                ),
+              ],
+            ));
+
+        await update(critical, normal);
+        expect(companion.checkInPrompts, hasLength(1));
+        expect(cached(monitoring, 0), containsPair('resolved', true));
+
+        await update(emergency, warning);
+        expect(companion.calls, isNot(contains('show')));
+        expect(companion.calls.last, 'clearCheckIn');
+        expect(companion.alerts, [emergencyNotice]);
+        expect(companion.checkInPrompts, hasLength(1));
+        expect(cached(monitoring, 1), containsPair('addressed', true));
+
+        await monitoring.retry();
+        expect(companion.checkInPrompts, hasLength(1));
+        expect(companion.alerts, [emergencyNotice]);
+
+        await update(normal, warning);
+        expect(companion.checkInPrompts, hasLength(2));
+        expect(cached(monitoring, 1), containsPair('addressed', false));
+      },
+    );
 
     test(
       'a prompted summon starts a check-in directly and retries failed handoffs',

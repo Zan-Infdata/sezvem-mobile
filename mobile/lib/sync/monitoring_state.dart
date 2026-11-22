@@ -3,7 +3,8 @@ enum MonitoringStatus {
   warning(1),
   unbalanced(1),
   critical(2),
-  low(2);
+  low(2),
+  emergency(3);
 
   const MonitoringStatus(this.severity);
 
@@ -19,6 +20,7 @@ enum MonitoringStatus {
       'unbalanced' => unbalanced,
       'critical' => critical,
       'low' => low,
+      'emergency' => emergency,
       _ => null,
     };
   }

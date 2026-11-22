@@ -80,7 +80,14 @@ final class CompanionMonitoring extends ChangeNotifier {
   bool _isCurrent(int generation) => !_disposed && generation == _generation;
 
   Future<void> _surfaceAlerts(int generation) async {
-    if (!_states.values.any((state) => state.summon || state.addressed)) return;
+    final emergency = _states.values.any((state) => state.inEmergency);
+    final addressed = _states.entries
+        .where(
+          (entry) =>
+              entry.value.addressed && (!emergency || entry.value.inEmergency),
+        )
+        .toList();
+    if (addressed.isEmpty) return;
     final showing = await _companion.isShowing();
     if (!_isCurrent(generation)) return;
     if (!showing) {
@@ -94,18 +101,26 @@ final class CompanionMonitoring extends ChangeNotifier {
       state.summon = false;
     }
     notifyListeners();
-    final addressed = _states.entries
-        .where((entry) => entry.value.addressed)
-        .toList();
-    if (addressed.isEmpty) return;
-    final accepted = _checkInPrompt.isNotEmpty
-        ? await _companion.startCheckIn(_checkInPrompt)
-        : await _companion.showAlert(
-            title: 'Monitoring states',
-            message: addressed
-                .map((entry) => '${entry.key}: ${entry.value.description}')
-                .join('\n'),
-          );
+    final bool accepted;
+    if (emergency) {
+      await _companion.clearCheckIn();
+      if (!_isCurrent(generation)) return;
+      accepted = await _companion.showAlert(
+        title: 'Emergency monitoring alert',
+        message:
+            'Contact your medical team immediately. '
+            'Your monitoring results indicate a risk of complications.',
+      );
+    } else if (_checkInPrompt.isNotEmpty) {
+      accepted = await _companion.startCheckIn(_checkInPrompt);
+    } else {
+      accepted = await _companion.showAlert(
+        title: 'Monitoring states',
+        message: addressed
+            .map((entry) => '${entry.key}: ${entry.value.description}')
+            .join('\n'),
+      );
+    }
     if (!_isCurrent(generation) || !accepted) return;
     for (final entry in addressed) {
       entry.value.addressed = false;
@@ -128,6 +143,8 @@ final class _CachedState {
   bool addressed = false;
   bool resolved = false;
 
+  bool get inEmergency => status == MonitoringStatus.emergency;
+
   void update(MonitoringState observation) {
     final lastUpdate = updatedAt;
     final nextUpdate = observation.updatedAt;
@@ -144,7 +161,8 @@ final class _CachedState {
       previousStatus = status;
     }
     status = next;
-    if ((observation.prompt != null && next == MonitoringStatus.critical) ||
+    if (inEmergency ||
+        (observation.prompt != null && next == MonitoringStatus.critical) ||
         (!resolved && (next?.severity ?? 0) > severity)) {
       summon = true;
       addressed = true;

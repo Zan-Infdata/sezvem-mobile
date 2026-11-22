@@ -67,6 +67,7 @@ class CompanionOverlayService : Service() {
     private var dialog: AlertDialog? = null
     private var readyForCheckIns = false
     private var pendingCheckIn: String? = null
+    private var checkInActive = false
     private var sound: AudioTrack? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -129,7 +130,9 @@ class CompanionOverlayService : Service() {
         this.engine = engine
         this.channel = channel
         this.assistant = AssistantBridge(this, engine.dartExecutor.binaryMessenger) { _ ->
-            showAlert("Check-in preview", "The assistant prepared your check-in report on this phone.")
+            if (checkInActive) {
+                showAlert("Check-in preview", "The assistant prepared your check-in report on this phone.")
+            }
         }
         this.view = view
         this.root = root
@@ -292,6 +295,7 @@ class CompanionOverlayService : Service() {
         val channel = channel ?: return false
         if (!isShowing || !Settings.canDrawOverlays(this)) return false
         dialog?.dismiss()
+        checkInActive = true
         if (readyForCheckIns) {
             channel.invokeMethod("startCheckIn", mapOf("prompt" to prompt))
         } else {
@@ -301,6 +305,7 @@ class CompanionOverlayService : Service() {
     }
 
     fun clearCheckIn() {
+        checkInActive = false
         pendingCheckIn = null
         dialog?.dismiss()
         if (readyForCheckIns) channel?.invokeMethod("clearCheckIn", null)
@@ -414,6 +419,7 @@ class CompanionOverlayService : Service() {
         dialog = null
         readyForCheckIns = false
         pendingCheckIn = null
+        checkInActive = false
         channel?.setMethodCallHandler(null)
         channel = null
         assistant?.close()
