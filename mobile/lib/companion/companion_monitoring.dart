@@ -52,11 +52,9 @@ final class CompanionMonitoring extends ChangeNotifier {
   });
 
   Future<void> onDismissed() => _enqueue((generation) async {
-    final abnormal = _states.values
-        .where((state) => (state.status?.severity ?? 0) > 0)
-        .toList();
-    if (abnormal.isEmpty) return;
-    for (final state in abnormal) {
+    final resolved = _states.values.where((state) => state.resolved).toList();
+    if (resolved.isEmpty) return;
+    for (final state in resolved) {
       state.addressed = true;
     }
     notifyListeners();

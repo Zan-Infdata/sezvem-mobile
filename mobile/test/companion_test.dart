@@ -225,7 +225,7 @@ void main() {
     );
 
     test(
-      'retains worse history and re-alerts only active states on a swipe',
+      're-addresses every resolved-flag state on a swipe, including recovered states',
       () async {
         final companion = _FakeCompanionOverlay(granted: true, showing: true);
         final monitoring = CompanionMonitoring(companion)
@@ -233,6 +233,10 @@ void main() {
         addTearDown(monitoring.dispose);
 
         await monitoring.update(snapshot(critical, warning));
+        await monitoring.update((
+          patientId: patientId,
+          states: const [MonitoringState(id: 's-00000003', status: normal)],
+        ));
         expect(companion.calls, isNot(contains('show')));
         await monitoring.update(snapshot(normal, normal));
         await monitoring.update(snapshot(normal, warning));
@@ -246,14 +250,32 @@ void main() {
         companion.showing = false;
         await monitoring.onDismissed();
         expect(companion.showing, isTrue);
-        expect(companion.alerts.last, 's-00000002: warning');
+        expect(
+          companion.alerts.last,
+          's-00000001: normal (previously critical)\ns-00000002: warning',
+        );
         expect(cached(monitoring, 1), containsPair('addressed', false));
 
         await monitoring.update(snapshot(normal, normal));
         companion.showing = false;
+        companion.granted = false;
         await monitoring.onDismissed();
-        expect(companion.showing, isFalse);
         expect(companion.alerts, hasLength(2));
+        expect(cached(monitoring, 0), containsPair('addressed', true));
+        expect(cached(monitoring, 1), containsPair('addressed', true));
+        expect(cached(monitoring, 2), containsPair('resolved', false));
+        expect(cached(monitoring, 2), containsPair('addressed', false));
+
+        companion.granted = true;
+        await monitoring.retry();
+        expect(companion.showing, isTrue);
+        expect(
+          companion.alerts.last,
+          's-00000001: normal (previously critical)\n'
+          's-00000002: normal (previously warning)',
+        );
+        expect(cached(monitoring, 0), containsPair('addressed', false));
+        expect(cached(monitoring, 1), containsPair('addressed', false));
       },
     );
 
