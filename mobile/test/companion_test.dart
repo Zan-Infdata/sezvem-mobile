@@ -176,6 +176,35 @@ void main() {
     });
 
     test(
+      'critical s-123 invites a check-in after a warning and on a new episode',
+      () async {
+        final companion = _FakeCompanionOverlay(granted: true);
+        final monitoring = CompanionMonitoring(companion)
+          ..setPatient(patientId);
+        addTearDown(monitoring.dispose);
+
+        Future<void> update(MonitoringStatus status) => monitoring.update((
+          patientId: patientId,
+          states: [MonitoringState(id: 's-123', status: status)],
+        ));
+
+        await update(warning);
+        await update(critical);
+        await update(critical);
+        expect(companion.checkIns, [null, AssistantSkill.criticalHeartRate]);
+
+        await update(normal);
+        await update(critical);
+        expect(companion.checkIns.last, AssistantSkill.criticalHeartRate);
+        expect(companion.checkIns, hasLength(3));
+
+        monitoring.setPatient('other-patient');
+        await monitoring.retry();
+        expect(companion.calls.last, 'clearCheckIn');
+      },
+    );
+
+    test(
       'retains worse history and re-alerts only active states on a swipe',
       () async {
         final companion = _FakeCompanionOverlay(granted: true, showing: true);
@@ -570,6 +599,32 @@ void main() {
       await finish(tester);
     });
 
+    testWidgets('monitoring opens a skill chat and patient change clears it', (
+      tester,
+    ) async {
+      await enter(tester);
+      await native.sendWindowEvent(
+        tester,
+        const MethodCall('startCheckIn', {'skill': 'criticalHeartRate'}),
+      );
+      await pumpFor(tester, const Duration(milliseconds: 1300));
+      expect(assistant.skills, [AssistantSkill.criticalHeartRate]);
+      expect(assistant.sent, [contains('Begin the monitoring check-in')]);
+      assistant.reply.add('How does your heart feel right now?');
+      await tester.pump();
+      expect(find.text('How does your heart feel right now?'), findsOneWidget);
+
+      await native.sendWindowEvent(tester, const MethodCall('clearCheckIn'));
+      await pumpFor(tester, const Duration(milliseconds: 1300));
+      expect(native.calls('collapse'), hasLength(1));
+      await tester.tap(companion);
+      await pumpFor(tester, const Duration(milliseconds: 1300));
+      expect(assistant.skills, [AssistantSkill.criticalHeartRate, null]);
+      expect(find.text('How does your heart feel right now?'), findsNothing);
+      expect(assistant.sent, hasLength(1));
+      await finish(tester);
+    });
+
     testWidgets('swipes left and right walk off and close', (tester) async {
       await enter(tester);
       await tester.fling(companion, const Offset(-60, 0), 1000);
@@ -855,13 +910,14 @@ class _FakeNativeWindow {
   }
 
   /// Presses Back, as the service reports it while the window is expanded.
-  Future<void> pressBack(WidgetTester tester) async {
+  Future<void> pressBack(WidgetTester tester) =>
+      sendWindowEvent(tester, const MethodCall('backPressed'));
+
+  Future<void> sendWindowEvent(WidgetTester tester, MethodCall call) async {
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .handlePlatformMessage(
           _channel.name,
-          const StandardMethodCodec().encodeMethodCall(
-            const MethodCall('backPressed'),
-          ),
+          const StandardMethodCodec().encodeMethodCall(call),
           (_) {},
         );
     await tester.pump();
@@ -910,6 +966,7 @@ class _FakeCompanionOverlay implements CompanionOverlay {
   bool failAlert = false;
   final calls = <String>[];
   final alerts = <String>[];
+  final checkIns = <AssistantSkill?>[];
 
   @override
   Future<bool> hasPermission() async {
@@ -936,11 +993,16 @@ class _FakeCompanionOverlay implements CompanionOverlay {
   Future<bool> showAlert({
     required String title,
     required String message,
+    AssistantSkill? checkIn,
   }) async {
     if (failAlert) return false;
     alerts.add(message);
+    checkIns.add(checkIn);
     return true;
   }
+
+  @override
+  Future<void> clearCheckIn() async => calls.add('clearCheckIn');
 
   @override
   Future<void> hide() async {
@@ -984,6 +1046,7 @@ class _FakeAssistant implements AssistantEngine {
     loadTime: Duration(milliseconds: 1500),
   );
   var loads = 0;
+  final skills = <AssistantSkill?>[];
   final sent = <String>[];
   final reply = StreamController<String>();
 
@@ -991,8 +1054,9 @@ class _FakeAssistant implements AssistantEngine {
   Future<AssistantState> status() async => loadResult;
 
   @override
-  Future<AssistantState> load() async {
+  Future<AssistantState> load({AssistantSkill? skill}) async {
     loads++;
+    skills.add(skill);
     return loadResult;
   }
 

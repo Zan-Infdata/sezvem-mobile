@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 
+import '../assistant/assistant_engine.dart';
 import 'styles/companion_look.dart';
 
 /// Position of the overlay window and the usable screen area, in physical
@@ -70,6 +71,8 @@ class CompanionWindow {
     required bool Function(Offset uv) onMoveTo,
     required void Function(CompanionLook look) onLookChanged,
     void Function()? onBack,
+    void Function(AssistantSkill skill)? onCheckIn,
+    void Function()? onClearCheckIn,
   }) {
     _channel.setMethodCallHandler((call) async {
       final args = call.arguments is Map ? call.arguments as Map : const {};
@@ -87,6 +90,14 @@ class CompanionWindow {
           return null;
         case 'backPressed':
           onBack?.call();
+          return null;
+        case 'startCheckIn':
+          for (final skill in AssistantSkill.values) {
+            if (skill.name == args['skill']) onCheckIn?.call(skill);
+          }
+          return null;
+        case 'clearCheckIn':
+          onClearCheckIn?.call();
           return null;
       }
       throw MissingPluginException(call.method);

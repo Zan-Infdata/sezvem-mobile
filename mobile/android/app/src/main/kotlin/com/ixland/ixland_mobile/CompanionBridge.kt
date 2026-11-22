@@ -47,8 +47,13 @@ internal class CompanionBridge(private val activity: Activity, messenger: Binary
                     CompanionOverlayService.instance?.showAlert(
                         call.argument<String>("title") ?: "",
                         call.argument<String>("message") ?: "",
+                        call.argument<String>("checkIn"),
                     ) == true,
                 )
+                "clearCheckIn" -> {
+                    CompanionOverlayService.instance?.clearCheckIn()
+                    result.success(null)
+                }
                 "moveTo" -> {
                     val service = CompanionOverlayService.instance
                     val u = call.argument<Number>("u")?.toDouble()

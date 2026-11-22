@@ -24,9 +24,10 @@ class ChatMessage {
 /// Messages live in memory only. They are gone when this object is disposed,
 /// which happens when the companion window closes.
 class AssistantChat extends ChangeNotifier {
-  AssistantChat(this.engine);
+  AssistantChat(this.engine, {this.skill});
 
   final AssistantEngine engine;
+  final AssistantSkill? skill;
   final List<ChatMessage> _messages = [];
   StreamSubscription<String>? _reply;
   AssistantState _state = const AssistantState(AssistantStatus.unloaded);
@@ -39,17 +40,20 @@ class AssistantChat extends ChangeNotifier {
 
   bool get isReplying => _reply != null;
 
-  bool get canSend => _state.status == AssistantStatus.ready && !isReplying;
+  bool get canSend =>
+      !_disposed && _state.status == AssistantStatus.ready && !isReplying;
 
   /// Loads the model unless it is loaded or loading.
   Future<void> prepare() async {
-    if (_state.status == AssistantStatus.ready ||
+    if (_disposed ||
+        _state.status == AssistantStatus.ready ||
         _state.status == AssistantStatus.loading) {
       return;
     }
     _setState(const AssistantState(AssistantStatus.loading));
     try {
-      _setState(await engine.load());
+      _setState(await engine.load(skill: skill));
+      _startCheckIn();
     } on PlatformException catch (error) {
       _setState(AssistantState(AssistantStatus.error, message: error.message));
     } on MissingPluginException {
@@ -67,10 +71,22 @@ class AssistantChat extends ChangeNotifier {
   bool send(String text) {
     final trimmed = text.trim();
     if (trimmed.isEmpty || !canSend) return false;
+    _messages.add(ChatMessage(fromUser: true, text: trimmed));
+    _requestReply(trimmed);
+    return true;
+  }
+
+  void _startCheckIn() {
+    if (skill != null && canSend) {
+      _requestReply(
+        'Begin the monitoring check-in from your system instructions.',
+      );
+    }
+  }
+
+  void _requestReply(String text) {
     final reply = ChatMessage(fromUser: false)..pending = true;
-    _messages
-      ..add(ChatMessage(fromUser: true, text: trimmed))
-      ..add(reply);
+    _messages.add(reply);
     void end({bool failed = false}) {
       reply
         ..pending = false
@@ -80,7 +96,7 @@ class AssistantChat extends ChangeNotifier {
     }
 
     _reply = engine
-        .send(trimmed)
+        .send(text)
         .listen(
           (chunk) {
             reply.text += chunk;
@@ -91,7 +107,6 @@ class AssistantChat extends ChangeNotifier {
           cancelOnError: true,
         );
     _notify();
-    return true;
   }
 
   /// Stops the streaming reply and keeps what arrived so far.
@@ -109,10 +124,22 @@ class AssistantChat extends ChangeNotifier {
 
   /// Clears the messages and starts a new conversation.
   Future<void> clear() async {
+    final previous = _state;
     await stop();
+    if (_disposed || _state != previous) return;
     _messages.clear();
-    _notify();
-    if (_state.status == AssistantStatus.ready) await engine.reset();
+    if (previous.status != AssistantStatus.ready) {
+      _notify();
+      return;
+    }
+    _setState(const AssistantState(AssistantStatus.loading));
+    try {
+      await engine.reset();
+      _setState(previous);
+      _startCheckIn();
+    } on PlatformException catch (error) {
+      _setState(AssistantState(AssistantStatus.error, message: error.message));
+    }
   }
 
   void _setState(AssistantState state) {
@@ -126,6 +153,7 @@ class AssistantChat extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (_disposed) return;
     _disposed = true;
     _reply?.cancel();
     _reply = null;

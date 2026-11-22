@@ -65,6 +65,7 @@ class CompanionOverlayService : Service() {
     private var params: WindowManager.LayoutParams? = null
     private var channel: MethodChannel? = null
     private var dialog: AlertDialog? = null
+    private var checkInDialog: AlertDialog? = null
     private var sound: AudioTrack? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -126,7 +127,11 @@ class CompanionOverlayService : Service() {
 
         this.engine = engine
         this.channel = channel
-        this.assistant = AssistantBridge(this, engine.dartExecutor.binaryMessenger)
+        this.assistant = AssistantBridge(this, engine.dartExecutor.binaryMessenger) { _ ->
+            if (collapsed != null) {
+                showAlert("Check-in preview", "The assistant prepared your check-in report on this phone.")
+            }
+        }
         this.view = view
         this.root = root
         this.params = params
@@ -261,21 +266,37 @@ class CompanionOverlayService : Service() {
         }
     }
 
-    fun showAlert(title: String, message: String): Boolean {
+    fun showAlert(title: String, message: String, checkIn: String? = null): Boolean {
         if (!isShowing || !Settings.canDrawOverlays(this)) return false
         dialog?.dismiss()
         val themed = ContextThemeWrapper(this, android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
-        dialog = AlertDialog.Builder(themed)
+        val builder = AlertDialog.Builder(themed)
             .setTitle(title)
             .setMessage(message)
-            .setPositiveButton(android.R.string.ok, null)
-            .create()
+        if (checkIn == null) {
+            builder.setPositiveButton(android.R.string.ok, null)
+        } else {
+            builder.setNegativeButton("Dismiss", null)
+            builder.setPositiveButton("Start check-in") { _, _ ->
+                channel?.invokeMethod("startCheckIn", mapOf("skill" to checkIn))
+            }
+        }
+        dialog = builder.create()
             .also {
+                if (checkIn != null) checkInDialog = it
                 it.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
-                it.setOnDismissListener { _ -> if (dialog === it) dialog = null }
+                it.setOnDismissListener { _ ->
+                    if (dialog === it) dialog = null
+                    if (checkInDialog === it) checkInDialog = null
+                }
                 it.show()
             }
         return true
+    }
+
+    fun clearCheckIn() {
+        checkInDialog?.dismiss()
+        channel?.invokeMethod("clearCheckIn", null)
     }
 
     /** Plays a generated balloon sound: rushing air under a rising tone. */
@@ -384,6 +405,7 @@ class CompanionOverlayService : Service() {
         stopSound()
         dialog?.dismiss()
         dialog = null
+        checkInDialog = null
         channel?.setMethodCallHandler(null)
         channel = null
         assistant?.close()

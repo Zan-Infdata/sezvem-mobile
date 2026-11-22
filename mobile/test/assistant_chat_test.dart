@@ -86,6 +86,25 @@ void main() {
       expect(chat.canSend, isFalse);
       chat.dispose();
     });
+
+    test(
+      'check-in starts with a model turn and no visible user message',
+      () async {
+        final engine = _FakeEngine();
+        final chat = AssistantChat(
+          engine,
+          skill: AssistantSkill.criticalHeartRate,
+        );
+        addTearDown(chat.dispose);
+
+        await chat.prepare();
+        expect(engine.skill, AssistantSkill.criticalHeartRate);
+        expect(engine.sent.single, contains('Begin the monitoring check-in'));
+        expect(chat.messages.single.fromUser, isFalse);
+        await chat.prepare();
+        expect(engine.sent, hasLength(1));
+      },
+    );
   });
 
   test('soul.md is bundled and sets the refusal sentence', () async {
@@ -155,6 +174,28 @@ void main() {
       expect(state.modelPath, '/files/models/gemma-4-E2B-it.litertlm');
     });
 
+    test(
+      'load appends the bundled check-in instructions only for the skill',
+      () async {
+        final engine = create();
+        await engine.load(skill: AssistantSkill.criticalHeartRate);
+        await engine.load();
+
+        final args = calls.first.arguments as Map;
+        expect(args['skill'], 'criticalHeartRate');
+        expect(args['systemInstruction'], startsWith('Only medicine.\n\n'));
+        final skill = await rootBundle.loadString(
+          AssistantSkill.criticalHeartRate.asset,
+        );
+        expect(args['systemInstruction'], endsWith(skill));
+        expect(skill, contains('report_heart_rate_check_in'));
+        expect(calls.last.arguments, {
+          'backend': 'gpu',
+          'systemInstruction': 'Only medicine.',
+        });
+      },
+    );
+
     test('send streams the chunks for its own id until done', () async {
       final engine = create();
       final received = <String>[];
@@ -213,6 +254,7 @@ class _FakeEngine implements AssistantEngine {
   var cancels = 0;
   var resets = 0;
   PlatformException? loadError;
+  AssistantSkill? skill;
   final sent = <String>[];
   final reply = StreamController<String>();
 
@@ -221,8 +263,9 @@ class _FakeEngine implements AssistantEngine {
       const AssistantState(AssistantStatus.unloaded);
 
   @override
-  Future<AssistantState> load() async {
+  Future<AssistantState> load({AssistantSkill? skill}) async {
     loads++;
+    this.skill = skill;
     final error = loadError;
     if (error != null) throw error;
     return const AssistantState(AssistantStatus.ready, backend: 'cpu');

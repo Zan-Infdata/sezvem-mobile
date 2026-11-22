@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../assistant/assistant_engine.dart';
 import '../sync/monitoring_state.dart';
 import 'companion_overlay.dart';
 
@@ -24,6 +27,9 @@ final class CompanionMonitoring extends ChangeNotifier {
     if (patientId == _patientId) return;
     _generation++;
     _patientId = patientId;
+    if (_generation > 1) {
+      unawaited(_enqueue((_) => _companion.clearCheckIn()));
+    }
     if (_states.isEmpty) return;
     _states.clear();
     notifyListeners();
@@ -89,11 +95,15 @@ final class CompanionMonitoring extends ChangeNotifier {
         .where((entry) => entry.value.addressed)
         .toList();
     if (addressed.isEmpty) return;
+    final checkIn = addressed.any(
+      (entry) => _criticalHeartRate(entry.key, entry.value.status),
+    );
     final shown = await _companion.showAlert(
       title: 'Monitoring states',
       message: addressed
           .map((entry) => '${entry.key}: ${entry.value.description}')
           .join('\n'),
+      checkIn: checkIn ? AssistantSkill.criticalHeartRate : null,
     );
     if (!_isCurrent(generation) || !shown) return;
     for (final entry in addressed) {
@@ -108,6 +118,9 @@ final class CompanionMonitoring extends ChangeNotifier {
     super.dispose();
   }
 }
+
+bool _criticalHeartRate(String id, MonitoringStatus? status) =>
+    id == 's-123' && status == MonitoringStatus.critical;
 
 final class _CachedState {
   MonitoringStatus? status;
@@ -133,7 +146,8 @@ final class _CachedState {
       previousStatus = status;
     }
     status = next;
-    if (!resolved && (next?.severity ?? 0) > severity) {
+    if (_criticalHeartRate(observation.id, next) ||
+        (!resolved && (next?.severity ?? 0) > severity)) {
       summon = true;
       addressed = true;
       resolved = true;
