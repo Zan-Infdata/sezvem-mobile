@@ -42,7 +42,7 @@ internal class AssistantBridge(
                     context,
                     call.argument<String>("backend") ?: "cpu",
                     call.argument<String>("systemInstruction"),
-                    preview = if (call.argument<String>("skill") == "criticalHeartRate") {
+                    preview = if (call.argument<Boolean>("checkIn") == true) {
                         { report -> if (!closed) previewCheckIn(report) }
                     } else {
                         null

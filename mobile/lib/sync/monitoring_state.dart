@@ -28,11 +28,13 @@ final class MonitoringState {
   const MonitoringState({
     required this.id,
     required this.status,
+    this.prompt,
     this.updatedAt,
   });
 
   final String id;
   final MonitoringStatus? status;
+  final String? prompt;
   final DateTime? updatedAt;
 
   static MonitoringState? fromJson(Object? json, String patientId) {
@@ -42,9 +44,12 @@ final class MonitoringState {
       'output': final Map<Object?, Object?> output,
     } when owner == patientId && id.isNotEmpty) {
       final timestamp = json['updated_at'];
+      final prompt = json['prompt'];
+      final instructions = prompt is String ? prompt.trim() : '';
       return MonitoringState(
         id: id,
         status: MonitoringStatus.fromOutput(output),
+        prompt: instructions.isEmpty ? null : instructions,
         updatedAt: timestamp is String ? DateTime.tryParse(timestamp) : null,
       );
     }

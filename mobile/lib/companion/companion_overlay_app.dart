@@ -77,7 +77,7 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
   AssistantChat? _chat;
   late final _assistant = widget.assistant ?? NativeAssistantEngine();
   Completer<void>? _chatClosed;
-  AssistantSkill? _pendingCheckIn;
+  String? _pendingCheckIn;
   int _checkInGeneration = 0;
 
   /// Where the character is in the expanded window, in logical pixels. The
@@ -144,29 +144,31 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
         setState(() => _style = look.resolve(widget.styles));
       },
       onBack: _closeChat,
-      onCheckIn: (skill) {
-        _pendingCheckIn = skill;
+      onCheckIn: (prompt) {
+        _pendingCheckIn = prompt;
         _closeChat();
         _startPendingCheckIn();
       },
       onClearCheckIn: () {
         _checkInGeneration++;
         _pendingCheckIn = null;
-        if (_chat?.skill != null) _closeChat();
+        if (_chat?.checkInPrompt != null) _closeChat();
       },
     );
     actions.run(enterFromRight);
   }
 
   void _startPendingCheckIn() {
-    final skill = _pendingCheckIn;
-    if (skill == null) return;
+    final prompt = _pendingCheckIn;
+    if (prompt == null) return;
     final generation = _checkInGeneration;
     final accepted = _actions?.run(
       (context) => chat(
         context,
         open: () async {
-          if (generation == _checkInGeneration) await _openChat(skill: skill);
+          if (generation == _checkInGeneration) {
+            await _openChat(checkInPrompt: prompt);
+          }
         },
       ),
     );
@@ -176,12 +178,12 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
   /// Expands the window around the character, which becomes the chat head,
   /// and fades in the panel below it. Completes after the user closes the
   /// chat and the window is small again.
-  Future<void> _openChat({AssistantSkill? skill}) async {
+  Future<void> _openChat({String? checkInPrompt}) async {
     final movement = _movement;
     if (movement == null || !mounted) return;
-    if (skill != null) {
+    if (checkInPrompt != null) {
       _chat?.dispose();
-      _chat = AssistantChat(_assistant, skill: skill);
+      _chat = AssistantChat(_assistant, checkInPrompt: checkInPrompt);
     }
     final chat = _chat ??= AssistantChat(_assistant);
     final closed = _chatClosed = Completer<void>();
@@ -218,7 +220,7 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
     );
     await closed.future;
     if (!mounted) return;
-    if (skill != null) {
+    if (checkInPrompt != null) {
       chat.dispose();
       unawaited(_assistant.cancel());
     }
@@ -229,7 +231,7 @@ class _CompanionOverlayAppState extends State<CompanionOverlayApp>
     await _hideWhile(() async => collapsed = await _window.collapse());
     if (!mounted) return;
     setState(() {
-      if (skill != null) _chat = null;
+      if (checkInPrompt != null) _chat = null;
       _chatHead = null;
       _resizing = false;
     });

@@ -266,24 +266,24 @@ class CompanionOverlayService : Service() {
         }
     }
 
-    fun showAlert(title: String, message: String, checkIn: String? = null): Boolean {
+    fun showAlert(title: String, message: String, checkInPrompt: String? = null): Boolean {
         if (!isShowing || !Settings.canDrawOverlays(this)) return false
         dialog?.dismiss()
         val themed = ContextThemeWrapper(this, android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
         val builder = AlertDialog.Builder(themed)
             .setTitle(title)
             .setMessage(message)
-        if (checkIn == null) {
+        if (checkInPrompt == null) {
             builder.setPositiveButton(android.R.string.ok, null)
         } else {
             builder.setNegativeButton("Dismiss", null)
             builder.setPositiveButton("Start check-in") { _, _ ->
-                channel?.invokeMethod("startCheckIn", mapOf("skill" to checkIn))
+                channel?.invokeMethod("startCheckIn", mapOf("prompt" to checkInPrompt))
             }
         }
         dialog = builder.create()
             .also {
-                if (checkIn != null) checkInDialog = it
+                if (checkInPrompt != null) checkInDialog = it
                 it.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
                 it.setOnDismissListener { _ ->
                     if (dialog === it) dialog = null

@@ -1,6 +1,5 @@
 import 'package:flutter/services.dart';
 
-import '../assistant/assistant_engine.dart';
 import 'styles/companion_look.dart';
 
 /// Position of the overlay window and the usable screen area, in physical
@@ -71,7 +70,7 @@ class CompanionWindow {
     required bool Function(Offset uv) onMoveTo,
     required void Function(CompanionLook look) onLookChanged,
     void Function()? onBack,
-    void Function(AssistantSkill skill)? onCheckIn,
+    void Function(String prompt)? onCheckIn,
     void Function()? onClearCheckIn,
   }) {
     _channel.setMethodCallHandler((call) async {
@@ -92,8 +91,8 @@ class CompanionWindow {
           onBack?.call();
           return null;
         case 'startCheckIn':
-          for (final skill in AssistantSkill.values) {
-            if (skill.name == args['skill']) onCheckIn?.call(skill);
+          if (args['prompt'] case final String prompt when prompt.isNotEmpty) {
+            onCheckIn?.call(prompt);
           }
           return null;
         case 'clearCheckIn':

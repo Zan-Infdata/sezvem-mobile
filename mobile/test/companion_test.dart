@@ -168,6 +168,7 @@ void main() {
       await monitoring.retry();
       expect(companion.calls.where((call) => call == 'show'), hasLength(1));
       expect(companion.alerts, ['s-00000001: warning\ns-00000002: critical']);
+      expect(companion.checkInPrompts, [null]);
       for (final state in monitoring.debugStates) {
         expect(state, containsPair('summon', false));
         expect(state, containsPair('addressed', false));
@@ -176,27 +177,46 @@ void main() {
     });
 
     test(
-      'critical s-123 invites a check-in after a warning and on a new episode',
+      'critical state with a prompt alerts after a warning and on a new episode',
       () async {
         final companion = _FakeCompanionOverlay(granted: true);
         final monitoring = CompanionMonitoring(companion)
           ..setPatient(patientId);
         addTearDown(monitoring.dispose);
 
-        Future<void> update(MonitoringStatus status) => monitoring.update((
-          patientId: patientId,
-          states: [MonitoringState(id: 's-123', status: status)],
-        ));
+        const first = 'First fixture prompt.';
+        const second = 'Second fixture prompt.';
+        Future<void> update(MonitoringStatus status, {bool both = true}) =>
+            monitoring.update((
+              patientId: patientId,
+              states: [
+                MonitoringState(
+                  id: 's-00000001',
+                  status: status,
+                  prompt: first,
+                ),
+                if (both)
+                  const MonitoringState(
+                    id: 's-00000002',
+                    status: normal,
+                    prompt: second,
+                  ),
+              ],
+            ));
 
         await update(warning);
         await update(critical);
         await update(critical);
-        expect(companion.checkIns, [null, AssistantSkill.criticalHeartRate]);
+        expect(companion.checkInPrompts, [
+          '$first\n\n$second',
+          '$first\n\n$second',
+        ]);
+        expect(cached(monitoring, 0), isNot(contains('prompt')));
 
         await update(normal);
-        await update(critical);
-        expect(companion.checkIns.last, AssistantSkill.criticalHeartRate);
-        expect(companion.checkIns, hasLength(3));
+        await update(critical, both: false);
+        expect(companion.checkInPrompts.last, first);
+        expect(companion.checkInPrompts, hasLength(3));
 
         monitoring.setPatient('other-patient');
         await monitoring.retry();
@@ -599,31 +619,36 @@ void main() {
       await finish(tester);
     });
 
-    testWidgets('monitoring opens a skill chat and patient change clears it', (
-      tester,
-    ) async {
-      await enter(tester);
-      await native.sendWindowEvent(
-        tester,
-        const MethodCall('startCheckIn', {'skill': 'criticalHeartRate'}),
-      );
-      await pumpFor(tester, const Duration(milliseconds: 1300));
-      expect(assistant.skills, [AssistantSkill.criticalHeartRate]);
-      expect(assistant.sent, [contains('Begin the monitoring check-in')]);
-      assistant.reply.add('How does your heart feel right now?');
-      await tester.pump();
-      expect(find.text('How does your heart feel right now?'), findsOneWidget);
+    testWidgets(
+      'monitoring passes the combined prompt and patient change clears it',
+      (tester) async {
+        const prompt = 'First fixture prompt.\n\nSecond fixture prompt.';
+        await enter(tester);
+        await native.sendWindowEvent(
+          tester,
+          const MethodCall('startCheckIn', {'prompt': prompt}),
+        );
+        await pumpFor(tester, const Duration(milliseconds: 1300));
+        expect(assistant.checkInPrompts, [prompt]);
+        expect(assistant.sent, [contains('Begin the monitoring check-in')]);
+        assistant.reply.add('How does your heart feel right now?');
+        await tester.pump();
+        expect(
+          find.text('How does your heart feel right now?'),
+          findsOneWidget,
+        );
 
-      await native.sendWindowEvent(tester, const MethodCall('clearCheckIn'));
-      await pumpFor(tester, const Duration(milliseconds: 1300));
-      expect(native.calls('collapse'), hasLength(1));
-      await tester.tap(companion);
-      await pumpFor(tester, const Duration(milliseconds: 1300));
-      expect(assistant.skills, [AssistantSkill.criticalHeartRate, null]);
-      expect(find.text('How does your heart feel right now?'), findsNothing);
-      expect(assistant.sent, hasLength(1));
-      await finish(tester);
-    });
+        await native.sendWindowEvent(tester, const MethodCall('clearCheckIn'));
+        await pumpFor(tester, const Duration(milliseconds: 1300));
+        expect(native.calls('collapse'), hasLength(1));
+        await tester.tap(companion);
+        await pumpFor(tester, const Duration(milliseconds: 1300));
+        expect(assistant.checkInPrompts, [prompt, null]);
+        expect(find.text('How does your heart feel right now?'), findsNothing);
+        expect(assistant.sent, hasLength(1));
+        await finish(tester);
+      },
+    );
 
     testWidgets('swipes left and right walk off and close', (tester) async {
       await enter(tester);
@@ -966,7 +991,7 @@ class _FakeCompanionOverlay implements CompanionOverlay {
   bool failAlert = false;
   final calls = <String>[];
   final alerts = <String>[];
-  final checkIns = <AssistantSkill?>[];
+  final checkInPrompts = <String?>[];
 
   @override
   Future<bool> hasPermission() async {
@@ -993,11 +1018,11 @@ class _FakeCompanionOverlay implements CompanionOverlay {
   Future<bool> showAlert({
     required String title,
     required String message,
-    AssistantSkill? checkIn,
+    String? checkInPrompt,
   }) async {
     if (failAlert) return false;
     alerts.add(message);
-    checkIns.add(checkIn);
+    checkInPrompts.add(checkInPrompt);
     return true;
   }
 
@@ -1046,7 +1071,7 @@ class _FakeAssistant implements AssistantEngine {
     loadTime: Duration(milliseconds: 1500),
   );
   var loads = 0;
-  final skills = <AssistantSkill?>[];
+  final checkInPrompts = <String?>[];
   final sent = <String>[];
   final reply = StreamController<String>();
 
@@ -1054,9 +1079,9 @@ class _FakeAssistant implements AssistantEngine {
   Future<AssistantState> status() async => loadResult;
 
   @override
-  Future<AssistantState> load({AssistantSkill? skill}) async {
+  Future<AssistantState> load({String? checkInPrompt}) async {
     loads++;
-    skills.add(skill);
+    checkInPrompts.add(checkInPrompt);
     return loadResult;
   }
 

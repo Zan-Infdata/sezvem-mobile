@@ -97,7 +97,7 @@ internal object AssistantEngine {
         worker.execute {
             val wanted = systemInstruction?.takeIf { it.isNotBlank() } ?: FALLBACK_INSTRUCTION
             val source = when {
-                preview != null -> "soul.md and SKILL1.md"
+                preview != null -> "soul.md and monitoring state prompts"
                 wanted == FALLBACK_INSTRUCTION -> "fallback"
                 else -> "soul.md"
             }

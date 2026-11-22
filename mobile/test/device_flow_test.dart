@@ -66,6 +66,7 @@ void main() {
     final messenger = tester.binding.defaultBinaryMessenger;
     var companionShowing = false;
     final monitoringAlerts = <Object?>[];
+    final checkInPrompts = <Object?>[];
     messenger.setMockMethodCallHandler(settingsChannel, (call) async => null);
     messenger.setMockMethodCallHandler(companionChannel, (call) async {
       switch (call.method) {
@@ -77,6 +78,7 @@ void main() {
           return companionShowing = true;
         case 'showAlert':
           monitoringAlerts.add(call.arguments['message']);
+          checkInPrompts.add(call.arguments['checkInPrompt']);
           return true;
       }
       return null;
@@ -254,12 +256,22 @@ void main() {
     api.snapshots.add((
       patientId: 'p-abcdef01',
       states: const [
-        MonitoringState(id: 's-00000001', status: MonitoringStatus.warning),
+        MonitoringState(
+          id: 's-00000001',
+          status: MonitoringStatus.warning,
+          prompt: 'First fixture prompt.',
+        ),
+        MonitoringState(
+          id: 's-00000002',
+          status: MonitoringStatus.normal,
+          prompt: 'Second fixture prompt.',
+        ),
       ],
     ));
     await tester.pumpAndSettle();
     expect(companionShowing, isTrue);
     expect(monitoringAlerts, ['s-00000001: warning']);
+    expect(checkInPrompts, ['First fixture prompt.\n\nSecond fixture prompt.']);
     companionShowing = false;
     await messenger.handlePlatformMessage(
       dismissalsChannel.name,

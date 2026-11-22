@@ -24,10 +24,10 @@ class ChatMessage {
 /// Messages live in memory only. They are gone when this object is disposed,
 /// which happens when the companion window closes.
 class AssistantChat extends ChangeNotifier {
-  AssistantChat(this.engine, {this.skill});
+  AssistantChat(this.engine, {this.checkInPrompt});
 
   final AssistantEngine engine;
-  final AssistantSkill? skill;
+  final String? checkInPrompt;
   final List<ChatMessage> _messages = [];
   StreamSubscription<String>? _reply;
   AssistantState _state = const AssistantState(AssistantStatus.unloaded);
@@ -52,7 +52,7 @@ class AssistantChat extends ChangeNotifier {
     }
     _setState(const AssistantState(AssistantStatus.loading));
     try {
-      _setState(await engine.load(skill: skill));
+      _setState(await engine.load(checkInPrompt: checkInPrompt));
       _startCheckIn();
     } on PlatformException catch (error) {
       _setState(AssistantState(AssistantStatus.error, message: error.message));
@@ -77,7 +77,7 @@ class AssistantChat extends ChangeNotifier {
   }
 
   void _startCheckIn() {
-    if (skill != null && canSend) {
+    if (checkInPrompt != null && canSend) {
       _requestReply(
         'Begin the monitoring check-in from your system instructions.',
       );

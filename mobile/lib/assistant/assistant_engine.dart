@@ -2,14 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
-enum AssistantSkill {
-  criticalHeartRate('assets/SKILL1.md');
-
-  const AssistantSkill(this.asset);
-
-  final String asset;
-}
-
 /// Where the on-device model is in its lifecycle.
 enum AssistantStatus {
   /// The model file is on the phone but not loaded.
@@ -69,7 +61,7 @@ abstract interface class AssistantEngine {
   Future<AssistantState> status();
 
   /// Loads the model if needed. Can take several seconds.
-  Future<AssistantState> load({AssistantSkill? skill});
+  Future<AssistantState> load({String? checkInPrompt});
 
   /// Sends [text] in the current conversation and streams the reply in
   /// chunks. The stream ends when the reply is complete and fails if
@@ -115,16 +107,15 @@ class NativeAssistantEngine implements AssistantEngine {
   );
 
   @override
-  Future<AssistantState> load({AssistantSkill? skill}) async {
+  Future<AssistantState> load({String? checkInPrompt}) async {
     final soul = await _loadSoul();
-    final instruction = skill == null
-        ? soul
-        : '$soul\n\n${await rootBundle.loadString(skill.asset)}';
     return AssistantState.fromMap(
       await _methods.invokeMapMethod('load', {
         'backend': backend,
-        'systemInstruction': instruction,
-        if (skill != null) 'skill': skill.name,
+        'systemInstruction': checkInPrompt == null
+            ? soul
+            : '$soul\n\n$checkInPrompt',
+        if (checkInPrompt != null) 'checkIn': true,
       }),
     );
   }

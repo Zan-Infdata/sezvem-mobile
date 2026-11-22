@@ -8,9 +8,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal data class HeartRateCheckInReport(
     val heartFeeling: String,
     val spo2Percent: Int?,
-) {
-    val stateId: String get() = "s-123"
-}
+)
 
 internal class HeartRateCheckInTool(
     private val preview: (HeartRateCheckInReport) -> Boolean,

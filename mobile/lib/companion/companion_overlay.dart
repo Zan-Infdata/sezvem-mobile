@@ -1,6 +1,5 @@
 import 'package:flutter/services.dart';
 
-import '../assistant/assistant_engine.dart';
 import 'styles/companion_look.dart';
 
 /// Main-app access to the companion overlay.
@@ -29,7 +28,7 @@ abstract interface class CompanionOverlay {
   Future<bool> showAlert({
     required String title,
     required String message,
-    AssistantSkill? checkIn,
+    String? checkInPrompt,
   });
 
   /// Closes a pending or active check-in when the configured patient changes.
@@ -88,12 +87,12 @@ class AndroidCompanionOverlay implements CompanionOverlay {
   Future<bool> showAlert({
     required String title,
     required String message,
-    AssistantSkill? checkIn,
+    String? checkInPrompt,
   }) async =>
       await _channel.invokeMethod<bool>('showAlert', {
         'title': title,
         'message': message,
-        if (checkIn != null) 'checkIn': checkIn.name,
+        if (checkInPrompt != null) 'checkInPrompt': checkInPrompt,
       }) ??
       false;
 
