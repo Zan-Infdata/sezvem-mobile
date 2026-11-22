@@ -60,6 +60,10 @@ class CompanionWindow {
     await _channel.invokeMapMethod<Object?, Object?>('getLook'),
   );
 
+  /// Lets Android deliver a check-in queued while the overlay was starting.
+  Future<void> readyForCheckIns() =>
+      _channel.invokeMethod<void>('readyForCheckIns');
+
   /// Handles calls from the service. [onLayoutChanged] receives the clamped
   /// layout after rotation or a display change. [onMoveTo] receives a point in
   /// 0 to 1 screen coordinates from the main app and returns whether the

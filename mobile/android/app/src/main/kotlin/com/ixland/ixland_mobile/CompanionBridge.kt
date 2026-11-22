@@ -47,9 +47,14 @@ internal class CompanionBridge(private val activity: Activity, messenger: Binary
                     CompanionOverlayService.instance?.showAlert(
                         call.argument<String>("title") ?: "",
                         call.argument<String>("message") ?: "",
-                        call.argument<String>("checkInPrompt"),
                     ) == true,
                 )
+                "startCheckIn" -> {
+                    val prompt = call.argument<String>("prompt")
+                    result.success(
+                        !prompt.isNullOrBlank() && CompanionOverlayService.instance?.startCheckIn(prompt) == true,
+                    )
+                }
                 "clearCheckIn" -> {
                     CompanionOverlayService.instance?.clearCheckIn()
                     result.success(null)

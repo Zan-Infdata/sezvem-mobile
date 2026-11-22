@@ -78,7 +78,9 @@ void main() {
           return companionShowing = true;
         case 'showAlert':
           monitoringAlerts.add(call.arguments['message']);
-          checkInPrompts.add(call.arguments['checkInPrompt']);
+          return true;
+        case 'startCheckIn':
+          checkInPrompts.add(call.arguments['prompt']);
           return true;
       }
       return null;
@@ -270,7 +272,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(companionShowing, isTrue);
-    expect(monitoringAlerts, ['s-00000001: warning']);
+    expect(monitoringAlerts, isEmpty);
     expect(checkInPrompts, ['First fixture prompt.\n\nSecond fixture prompt.']);
     companionShowing = false;
     await messenger.handlePlatformMessage(
@@ -280,7 +282,11 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(companionShowing, isTrue);
-    expect(monitoringAlerts, ['s-00000001: warning', 's-00000001: warning']);
+    expect(monitoringAlerts, isEmpty);
+    expect(
+      checkInPrompts,
+      List.filled(2, 'First fixture prompt.\n\nSecond fixture prompt.'),
+    );
     await tester.pumpWidget(const SizedBox.shrink());
     unawaited(api.snapshots.close());
     unawaited(adapter.events.close());

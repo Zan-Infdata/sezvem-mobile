@@ -25,11 +25,10 @@ abstract interface class CompanionOverlay {
   Stream<void> get dismissals;
 
   /// Shows an alert when the companion window is available.
-  Future<bool> showAlert({
-    required String title,
-    required String message,
-    String? checkInPrompt,
-  });
+  Future<bool> showAlert({required String title, required String message});
+
+  /// Hands a monitoring check-in to the overlay to open as soon as it is ready.
+  Future<bool> startCheckIn(String prompt);
 
   /// Closes a pending or active check-in when the configured patient changes.
   Future<void> clearCheckIn();
@@ -87,13 +86,16 @@ class AndroidCompanionOverlay implements CompanionOverlay {
   Future<bool> showAlert({
     required String title,
     required String message,
-    String? checkInPrompt,
   }) async =>
       await _channel.invokeMethod<bool>('showAlert', {
         'title': title,
         'message': message,
-        if (checkInPrompt != null) 'checkInPrompt': checkInPrompt,
       }) ??
+      false;
+
+  @override
+  Future<bool> startCheckIn(String prompt) async =>
+      await _channel.invokeMethod<bool>('startCheckIn', {'prompt': prompt}) ??
       false;
 
   @override

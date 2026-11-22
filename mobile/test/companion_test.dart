@@ -168,7 +168,7 @@ void main() {
       await monitoring.retry();
       expect(companion.calls.where((call) => call == 'show'), hasLength(1));
       expect(companion.alerts, ['s-00000001: warning\ns-00000002: critical']);
-      expect(companion.checkInPrompts, [null]);
+      expect(companion.checkInPrompts, isEmpty);
       for (final state in monitoring.debugStates) {
         expect(state, containsPair('summon', false));
         expect(state, containsPair('addressed', false));
@@ -177,7 +177,7 @@ void main() {
     });
 
     test(
-      'critical state with a prompt alerts after a warning and on a new episode',
+      'a prompted summon starts a check-in directly and retries failed handoffs',
       () async {
         final companion = _FakeCompanionOverlay(granted: true);
         final monitoring = CompanionMonitoring(companion)
@@ -204,7 +204,11 @@ void main() {
               ],
             ));
 
+        companion.failCheckIn = true;
         await update(warning);
+        expect(cached(monitoring, 0), containsPair('addressed', true));
+        companion.failCheckIn = false;
+        await monitoring.retry();
         await update(critical);
         await update(critical);
         expect(companion.checkInPrompts, [
@@ -212,6 +216,7 @@ void main() {
           '$first\n\n$second',
         ]);
         expect(cached(monitoring, 0), isNot(contains('prompt')));
+        expect(companion.alerts, isEmpty);
 
         await update(normal);
         await update(critical, both: false);
@@ -642,7 +647,7 @@ void main() {
     });
 
     testWidgets(
-      'monitoring passes the combined prompt and patient change clears it',
+      'a summon opens the check-in and tapping resumes it until the patient changes',
       (tester) async {
         const prompt = 'First fixture prompt.\n\nSecond fixture prompt.';
         await enter(tester);
@@ -660,14 +665,65 @@ void main() {
           findsOneWidget,
         );
 
-        await native.sendWindowEvent(tester, const MethodCall('clearCheckIn'));
+        await tester.tap(find.byTooltip('Close chat'));
         await pumpFor(tester, const Duration(milliseconds: 1300));
         expect(native.calls('collapse'), hasLength(1));
+        await tester.tap(companion);
+        await pumpFor(tester, const Duration(milliseconds: 1300));
+        expect(assistant.checkInPrompts, [prompt]);
+        expect(assistant.sent, hasLength(1));
+        expect(
+          find.text('How does your heart feel right now?'),
+          findsOneWidget,
+        );
+
+        await native.sendWindowEvent(
+          tester,
+          const MethodCall('startCheckIn', {'prompt': prompt}),
+        );
+        await pumpFor(tester, const Duration(milliseconds: 1300));
+        expect(native.calls('collapse'), hasLength(1));
+        expect(assistant.sent, hasLength(1));
+
+        await native.sendWindowEvent(tester, const MethodCall('clearCheckIn'));
+        await pumpFor(tester, const Duration(milliseconds: 1300));
+        expect(native.calls('collapse'), hasLength(2));
         await tester.tap(companion);
         await pumpFor(tester, const Duration(milliseconds: 1300));
         expect(assistant.checkInPrompts, [prompt, null]);
         expect(find.text('How does your heart feel right now?'), findsNothing);
         expect(assistant.sent, hasLength(1));
+        await finish(tester);
+      },
+    );
+
+    testWidgets(
+      'a tap starts a queued check-in closed before its first question',
+      (tester) async {
+        const prompt = 'Fixture check-in prompt.';
+        native.queuedCheckIn = prompt;
+        await tester.pumpWidget(
+          SizedBox(
+            width: 192,
+            height: 192,
+            child: CompanionOverlayApp(assistant: assistant),
+          ),
+        );
+        final panel = find.byType(CompanionChatPanel);
+        for (var frame = 0; frame < 190 && panel.evaluate().isEmpty; frame++) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        expect(native.calls('readyForCheckIns'), hasLength(1));
+        expect(panel, findsOneWidget);
+        expect(assistant.sent, isEmpty);
+
+        await native.pressBack(tester);
+        await pumpFor(tester, const Duration(milliseconds: 1300));
+        expect(assistant.sent, isEmpty);
+        await tester.tap(companion);
+        await pumpFor(tester, const Duration(milliseconds: 1300));
+        expect(assistant.checkInPrompts, [prompt]);
+        expect(assistant.sent, [contains('Begin the monitoring check-in')]);
         await finish(tester);
       },
     );
@@ -857,6 +913,7 @@ class _FakeNativeWindow {
   double width = 192;
   double height = 192;
   CompanionLook look = const CompanionLook();
+  String? queuedCheckIn;
   (double, double, double, double)? _collapsed;
   double? lastMoveY;
 
@@ -893,6 +950,13 @@ class _FakeNativeWindow {
               return look.toMap();
             case 'getLayout':
               return _layout();
+            case 'readyForCheckIns':
+              if (queuedCheckIn case final prompt?) {
+                queuedCheckIn = null;
+                await _sendWindowEvent(
+                  MethodCall('startCheckIn', {'prompt': prompt}),
+                );
+              }
             case 'moveTo':
               x = (args['x'] as num).toDouble();
               y = (args['y'] as num).toDouble();
@@ -961,13 +1025,17 @@ class _FakeNativeWindow {
       sendWindowEvent(tester, const MethodCall('backPressed'));
 
   Future<void> sendWindowEvent(WidgetTester tester, MethodCall call) async {
+    await _sendWindowEvent(call);
+    await tester.pump();
+  }
+
+  Future<void> _sendWindowEvent(MethodCall call) async {
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .handlePlatformMessage(
           _channel.name,
           const StandardMethodCodec().encodeMethodCall(call),
           (_) {},
         );
-    await tester.pump();
   }
 
   void uninstall() {
@@ -1011,9 +1079,10 @@ class _FakeCompanionOverlay implements CompanionOverlay {
   bool granted;
   bool showing;
   bool failAlert = false;
+  bool failCheckIn = false;
   final calls = <String>[];
   final alerts = <String>[];
-  final checkInPrompts = <String?>[];
+  final checkInPrompts = <String>[];
 
   @override
   Future<bool> hasPermission() async {
@@ -1040,11 +1109,16 @@ class _FakeCompanionOverlay implements CompanionOverlay {
   Future<bool> showAlert({
     required String title,
     required String message,
-    String? checkInPrompt,
   }) async {
     if (failAlert) return false;
     alerts.add(message);
-    checkInPrompts.add(checkInPrompt);
+    return true;
+  }
+
+  @override
+  Future<bool> startCheckIn(String prompt) async {
+    if (failCheckIn) return false;
+    checkInPrompts.add(prompt);
     return true;
   }
 

@@ -98,14 +98,15 @@ final class CompanionMonitoring extends ChangeNotifier {
         .where((entry) => entry.value.addressed)
         .toList();
     if (addressed.isEmpty) return;
-    final shown = await _companion.showAlert(
-      title: 'Monitoring states',
-      message: addressed
-          .map((entry) => '${entry.key}: ${entry.value.description}')
-          .join('\n'),
-      checkInPrompt: _checkInPrompt.isEmpty ? null : _checkInPrompt,
-    );
-    if (!_isCurrent(generation) || !shown) return;
+    final accepted = _checkInPrompt.isNotEmpty
+        ? await _companion.startCheckIn(_checkInPrompt)
+        : await _companion.showAlert(
+            title: 'Monitoring states',
+            message: addressed
+                .map((entry) => '${entry.key}: ${entry.value.description}')
+                .join('\n'),
+          );
+    if (!_isCurrent(generation) || !accepted) return;
     for (final entry in addressed) {
       entry.value.addressed = false;
     }

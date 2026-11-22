@@ -65,7 +65,8 @@ class CompanionOverlayService : Service() {
     private var params: WindowManager.LayoutParams? = null
     private var channel: MethodChannel? = null
     private var dialog: AlertDialog? = null
-    private var checkInDialog: AlertDialog? = null
+    private var readyForCheckIns = false
+    private var pendingCheckIn: String? = null
     private var sound: AudioTrack? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -128,9 +129,7 @@ class CompanionOverlayService : Service() {
         this.engine = engine
         this.channel = channel
         this.assistant = AssistantBridge(this, engine.dartExecutor.binaryMessenger) { _ ->
-            if (collapsed != null) {
-                showAlert("Check-in preview", "The assistant prepared your check-in report on this phone.")
-            }
+            showAlert("Check-in preview", "The assistant prepared your check-in report on this phone.")
         }
         this.view = view
         this.root = root
@@ -142,6 +141,12 @@ class CompanionOverlayService : Service() {
         when (call.method) {
             "getLayout" -> result.success(layout())
             "getLook" -> result.success(CompanionPrefs.look(this))
+            "readyForCheckIns" -> {
+                readyForCheckIns = true
+                pendingCheckIn?.let { channel?.invokeMethod("startCheckIn", mapOf("prompt" to it)) }
+                pendingCheckIn = null
+                result.success(null)
+            }
             "moveTo" -> {
                 val params = params
                 val root = root
@@ -266,37 +271,39 @@ class CompanionOverlayService : Service() {
         }
     }
 
-    fun showAlert(title: String, message: String, checkInPrompt: String? = null): Boolean {
+    fun showAlert(title: String, message: String): Boolean {
         if (!isShowing || !Settings.canDrawOverlays(this)) return false
         dialog?.dismiss()
         val themed = ContextThemeWrapper(this, android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
-        val builder = AlertDialog.Builder(themed)
+        dialog = AlertDialog.Builder(themed)
             .setTitle(title)
             .setMessage(message)
-        if (checkInPrompt == null) {
-            builder.setPositiveButton(android.R.string.ok, null)
-        } else {
-            builder.setNegativeButton("Dismiss", null)
-            builder.setPositiveButton("Start check-in") { _, _ ->
-                channel?.invokeMethod("startCheckIn", mapOf("prompt" to checkInPrompt))
-            }
-        }
-        dialog = builder.create()
+            .setPositiveButton(android.R.string.ok, null)
+            .create()
             .also {
-                if (checkInPrompt != null) checkInDialog = it
                 it.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
-                it.setOnDismissListener { _ ->
-                    if (dialog === it) dialog = null
-                    if (checkInDialog === it) checkInDialog = null
-                }
+                it.setOnDismissListener { _ -> if (dialog === it) dialog = null }
                 it.show()
             }
         return true
     }
 
+    fun startCheckIn(prompt: String): Boolean {
+        val channel = channel ?: return false
+        if (!isShowing || !Settings.canDrawOverlays(this)) return false
+        dialog?.dismiss()
+        if (readyForCheckIns) {
+            channel.invokeMethod("startCheckIn", mapOf("prompt" to prompt))
+        } else {
+            pendingCheckIn = prompt
+        }
+        return true
+    }
+
     fun clearCheckIn() {
-        checkInDialog?.dismiss()
-        channel?.invokeMethod("clearCheckIn", null)
+        pendingCheckIn = null
+        dialog?.dismiss()
+        if (readyForCheckIns) channel?.invokeMethod("clearCheckIn", null)
     }
 
     /** Plays a generated balloon sound: rushing air under a rising tone. */
@@ -405,7 +412,8 @@ class CompanionOverlayService : Service() {
         stopSound()
         dialog?.dismiss()
         dialog = null
-        checkInDialog = null
+        readyForCheckIns = false
+        pendingCheckIn = null
         channel?.setMethodCallHandler(null)
         channel = null
         assistant?.close()
