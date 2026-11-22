@@ -323,7 +323,9 @@ class _Eye {
 /// Where the eyes are and what they look like. Angles are in degrees: [yaw]
 /// turns toward the facing side, positive [pitch] looks up, and [split] is
 /// the angle between each eye and the middle of the face. The resting face
-/// and the sad, surprised, and confused faces use bloub's values.
+/// uses bloub's attentive values, and the sad, surprised, and confused faces
+/// use bloub's values too. The defaults are bloub's side-glancing neutral
+/// face.
 class _Face {
   const _Face({
     required this.left,
@@ -349,9 +351,18 @@ class _Face {
          roll: roll,
        );
 
-  static const resting = _Face.both(_Eye(0.186, 0.412));
+  // bloub's attentive face: looking almost straight out.
+  static const resting = _Face.both(
+    _Eye(0.21, 0.44),
+    split: 16,
+    yaw: 4,
+    pitch: 5,
+    roll: -4,
+  );
+  // Glances up toward where it's going, with the resting eye size.
   static const walking = _Face.both(
-    _Eye(0.186, 0.412),
+    _Eye(0.21, 0.44),
+    split: 16,
     yaw: 34,
     pitch: 18,
     roll: -8,
